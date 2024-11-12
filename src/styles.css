@@ -1,0 +1,268 @@
+@font-face {
+    font-family: CascadiaCode;
+    src: url(res/CascadiaCode_VTT.ttf);
+}
+
+body {
+    color: #fff;
+    background-color: #1b1b1b;
+    font-family: CascadiaCode, Arial, Helvetica, sans-serif;
+    zoom: 125%;
+}
+
+h3 {
+    font-weight: large;
+    text-align: center;
+    margin: 20px;
+}
+
+a {
+    padding-left: 10vw;
+    padding-right: 10vw;
+    margin: 1vw;
+
+    text-decoration: none;
+    outline-color: transparent;
+    text-align: center;
+    line-height: 3;
+    color: black;
+}
+
+
+
+
+
+
+a:link,
+a:visited,
+a:focus {
+    background: rgb(190, 190, 97);
+}
+
+a:hover {
+    background: rgb(219, 180, 106);
+}
+
+a:active {
+    background: rgb(221, 102, 102);
+    color: rgb(187, 187, 187);
+}
+
+
+
+
+
+
+
+.form_radio_group {
+    display: inline-block;
+    text-align: center;
+
+    margin: 10px;
+}
+
+.form_radio_group-item {
+    display: inline-block;
+    margin: 2px;
+}
+
+.form_radio_group input[type=radio] {
+    display: none;
+}
+
+.form_radio_group label {
+    display: inline-block;
+    cursor: pointer;
+    padding: 0px 10px;
+    line-height: 34px;
+    color: #ffffff;
+    border: 1px solid #999;
+    user-select: none;
+}
+
+.form_radio_group-item:hover {
+    background-color: #4e2727;
+}
+
+.form_radio_group input[type=radio]:checked+label {
+    background: #b38d47;
+}
+
+.form_radio_group input[type=radio]:disabled+label {
+    background: #efefef;
+    color: #666;
+}
+
+
+
+
+
+.main_div {
+    border: 2px solid rgb(112, 112, 112);
+}
+
+.table_div {
+    margin: 10px;
+    overflow: auto;
+
+    max-height: 200px;
+}
+
+
+
+
+
+.flex-divider {
+    display: flex;
+    flex-direction: row;
+    justify-content: left;
+}
+
+.flex-leftitem {
+    width: 60%;
+}
+
+.flex-rightitem {
+    width: 40%;
+}
+
+
+.flex-plots {
+    display: flex;
+    flex-direction: row;
+    justify-content: left;
+}
+
+.flex-plot-table {
+    display: flex;
+    flex-direction: column;
+    justify-content: start;
+}
+
+
+
+tbody {
+    overflow-x: auto;
+}
+
+.data_table {
+    border-collapse: collapse;
+    width: 100%;
+}
+
+.data_table caption {
+    margin: 5px;
+    font-size: large;
+}
+
+.data_table td {
+    border: 1px solid rgb(104, 104, 104);
+    padding: 5px;
+    text-align: center;
+}
+
+.data_table tr.content:hover {
+    background-color: coral;
+}
+
+.data_table .sticky_row {
+    position: sticky;
+    top: 0;
+    background-color: black;
+    border: 1px;
+    border-color: white;
+
+    z-index: 2;
+}
+
+.data_table .sticky_cell {
+    position: sticky;
+    left: 0;
+    background-color: black;
+    border: 1px;
+    border-color: white;
+
+    z-index: 1;
+}
+
+.data_text {
+    overflow: auto;
+    margin: 5px;
+}
+
+.data_output {
+    overflow: auto;
+}
+
+
+.control_tasks {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+
+    font-size: medium;
+    margin: 5px;
+}
+
+.control_panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+
+    font-size: medium;
+    margin: 5px;
+}
+
+.control_panel>p {
+    margin: 0px;
+}
+
+.control_input_p {
+    margin-top: 2px;
+}
+
+.control_input {
+    margin: 10px;
+}
+
+
+.control_button,
+.control_button_tasks {
+    overflow: hidden;
+
+    margin: 10px;
+
+    padding-top: 5px;
+    padding-bottom: 5px;
+    padding-left: 10px;
+    padding-right: 10px;
+
+    display: inline-block;
+    font-size: large;
+    cursor: pointer;
+    text-align: center;
+    text-decoration: none;
+    outline: none;
+    background-color: #04AA6D;
+    border: none;
+    border-radius: 10px;
+    box-shadow: 0 9px #5a5a5a;
+
+    width: 30vw;
+}
+
+.control_button_tasks {
+    width: auto;
+}
+
+.control_button:hover,
+.control_button_tasks:hover {
+    background-color: #3e8e41
+}
+
+.control_button:active,
+.control_button_tasks:active {
+    background-color: #3e8e41;
+    box-shadow: 0 4px #464646;
+    transform: translateY(4px);
+}

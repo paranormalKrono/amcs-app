@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tauri App</title>
+
+  <meta name="description" content="UI for mathematical assignments written in Rust">
+  <meta name="author" content="paranormalKrono">
+
+  <link rel="stylesheet" href="src/styles.css">
+
+  <script src="node_modules/mathjax/es5/tex-chtml.js" id="MathJax-script" async></script>
+  <script>
+    MathJax = {
+      tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] },
+      svg: {
+        fontCache: 'global'
+      }
+    };
+  </script>
+</head>
+
+<body>
+
+  <div>
+    <h3 id="header-element">Эллиптические уравнения</h3>
+    <div class="control_tasks">
+      <form id="main_form" class="control_panel">
+        <div class="form_radio_group">
+          <div class="form_radio_group-item">
+            <input id="Task6" name="cur_task" type="radio" value="5" checked />
+            <label for="Task6">
+              Эллиптические уравнения
+            </label>
+          </div>
+        </div>
+      </form>
+      <div class="control_panel">
+        <button class="control_button_tasks" id="button_change_task">Изменить задачу</button>
+      </div>
+    </div>
+  </div>
+  <div>
+    <div class="flex-divider">
+      <div class="main_div flex-leftitem">
+        <form id="t6_form" class="control_panel">
+          <p>
+            Метод решения
+          </p>
+          <div class="form_radio_group">
+            <div class="form_radio_group-item">
+              <input id="radio-1" type="radio" name="solving_method" value="SimpleIteration">
+              <label for="radio-1">
+                Простая итерация
+              </label>
+            </div>
+            <div class="form_radio_group-item">
+              <input id="radio-2" type="radio" name="solving_method" value="OptimalSimpleIteration">
+              <label for="radio-2">
+                С оптимальным параметром
+              </label>
+            </div>
+            <div class="form_radio_group-item">
+              <input id="radio-3" type="radio" name="solving_method" value="Zeidel">
+              <label for="radio-3">
+                Зейдель
+              </label>
+            </div>
+            <div class="form_radio_group-item">
+              <input id="radio-4" type="radio" name="solving_method" value="UpperRelaxation">
+              <label for="radio-4">
+                Верхняя релаксация
+              </label>
+            </div>
+            <div class="form_radio_group-item">
+              <input id="radio-5" type="radio" name="solving_method" value="IterationChebyshevsky">
+              <label for="radio-5">
+                Чебышевские итерации
+              </label>
+            </div>
+            <div class="form_radio_group-item">
+              <input id="radio-6" type="radio" name="solving_method" value="AlternatingTriangular">
+              <label for="radio-6">
+                Попеременно треугольный
+              </label>
+            </div>
+            <div class="form_radio_group-item">
+              <input id="radio-7" type="radio" name="solving_method" value="AlternatingTriangularChebyshevsky">
+              <label for="radio-7">
+                Попеременно треугольный Чебышев
+              </label>
+            </div>
+            <div class="form_radio_group-item">
+              <input id="radio-8" type="radio" name="solving_method" value="AlternatingDirections" checked>
+              <label for="radio-8">
+                Переменные направления
+              </label>
+            </div>
+          </div>
+
+          <div class="form_radio_group">
+            <div class="form_radio_group-item">
+              <input id="opt-radio-1" type="radio" name="optimization" value="Nothing">
+              <label for="opt-radio-1">
+                Ничего
+              </label>
+            </div>
+            <div class="form_radio_group-item">
+              <input id="opt-radio-2" type="radio" name="optimization" value="Parallelism" checked>
+              <label for="opt-radio-2">
+                Папаллелизм
+              </label>
+            </div>
+            <div class="form_radio_group-item">
+              <input id="opt-radio-3" type="radio" name="optimization" value="Multithreading">
+              <label for="opt-radio-3">
+                Многопоточность
+              </label>
+            </div>
+          </div>
+
+          <p>
+            Параметр
+          </p>
+          <p class="control_input_p">
+            t = <input class="control_input" name="t" type="number" value="0.0" min="1e-32" max="100000" step="1e-2" />
+          </p>
+
+          <p>
+            Число шагов
+          </p>
+          <p class="control_input_p">
+            <input class="control_input" name="max_steps" type="number" value="16" min="1" max="100000" step="1" />
+          </p>
+
+          <p>
+            Погрешность решения для вычисления количества итераций
+          </p>
+          <p class="control_input_p">
+            eps = <input class="control_input" name="eps" type="number" value="1e-16" min="1e-32" max="1" step="1e-2" />
+          </p>
+
+
+          <div class="form_radio_group">
+            <div class="form_radio_group-item">
+              <input id="calc-radio-1" type="radio" name="calculation" value="MaxSteps" checked>
+              <label for="calc-radio-1">
+                Введённое
+              </label>
+            </div>
+            <div class="form_radio_group-item">
+              <input id="calc-radio-2" type="radio" name="calculation" value="Calculated">
+              <label for="calc-radio-2">
+                Вычисленное по эпсилон
+              </label>
+            </div>
+          </div>
+
+          <p>
+            Разбиение
+          </p>
+          <p class="control_input_p">
+            N = <input class="control_input" name="n" type="number" value="15" min="3" max="100000" step="1" />
+            M = <input class="control_input" name="m" type="number" value="7" min="3" max="100000" step="1" />
+          </p>
+
+
+          <p class="control_input_p">
+            <input name="is_backtrace" type="checkbox" checked />Обратная трассировка
+          </p>
+
+          <p>
+            Резервирование первых и последних итераций
+          </p>
+          <p class="control_input_p">
+            <input class="control_input" name="first_end_preserving" type="number" value="15" min="3" max="100000"
+              step="1" />
+          </p>
+
+          <p>
+            Разделение средних итераций
+          </p>
+          <p class="control_input_p">
+            <input class="control_input" name="middle_division" type="number" value="15" min="3" max="100000"
+              step="1" />
+          </p>
+
+        </form>
+        <div class="control_panel">
+          <button class="control_button" id="button_send_request">
+            Отправить запрос
+          </button>
+        </div>
+      </div>
+      <div class="main_div flex-rightitem">
+        <p id="data_text" class="data_text"></p>
+      </div>
+    </div>
+  </div>
+  <div class="main_div">
+    <div id="t6_data_menu">
+      <div class="table_div">
+        <table class="data_table">
+          <caption>Данные метода</caption>
+          <tbody id="t6_table_body">
+            <tr class="sticky_row">
+              <td>$k$</td>
+              <td>$\tau$</td>
+              <td>$||F-AU^k||$</td>
+              <td>$\frac{||F-AU_k||}{||F-AU_0||}$</td>
+              <td>$||U^k-u^*||$</td>
+              <td>$\frac{||U_k-u^*||}{||U_0-u*||}$</td>
+              <td>$||U^k-U^{k-1}||$</td>
+              <td>$\frac{\rho(H)||U^k-U^{k-1}||}{1-\rho(H)}$</td>
+              <td>$\bar\rho_k$</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="table_div">
+        <table class="data_table">
+          <caption>Сетка вычисленного решения</caption>
+          <tbody id="t6_grid1_body">
+            <tr class="sticky_row" id="t6_grid1_header">
+              <td>$x|y$</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="table_div">
+        <table class="data_table">
+          <caption>Сетка настоящего решения</caption>
+          <tbody id="t6_grid2_body">
+            <tr class="sticky_row" id="t6_grid2_header">
+              <td>$x|y$</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="control_panel" style="flex-direction: row; align-items: center;">
+        <div id="t6_surface_plot1"></div>
+        <div id="t6_surface_plot2"></div>
+      </div>
+    </div>
+
+  </div>
+  </div>
+  <div class="data_output main_div">
+    <p id="data_output">
+
+    </p>
+  </div>
+
+  <script type="module" src="/src/index.ts" defer></script>
+</body>
+
+</html>

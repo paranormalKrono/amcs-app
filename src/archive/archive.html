@@ -1,0 +1,168 @@
+<div class="control_tasks">
+    <form id="main_form" class="control_panel">
+        <div class="form_radio_group">
+            <div class="form_radio_group-item">
+                <input id="Task1" name="cur_task" type="radio" value="0" />
+                <label for="Task1">
+                    Метод Ритца
+                </label>
+            </div>
+            <div class="form_radio_group-item">
+                <input id="Task4" name="cur_task" type="radio" value="3" />
+                <label for="Task4">
+                    Исследование устойчивости
+                </label>
+            </div>
+        </div>
+    </form>
+    <div class="control_panel">
+        <button class="control_button_tasks" id="button_change_task">Изменить задачу</button>
+    </div>
+</div>
+
+
+
+
+<form id="t1_form" class="control_panel">
+    <p>
+        Метод решения
+    </p>
+    <div class="form_radio_group">
+        <div class="form_radio_group-item">
+            <input id="ritz" name="solving_method" type="radio" value="Ritz" checked />
+            <label for="ritz">
+                Метод Ритца
+            </label>
+        </div>
+        <div class="form_radio_group-item">
+            <input id="relaxation" name="solving_method" type="radio" value="Relaxation" />
+            <label for="relaxation">
+                Метод Релаксации
+            </label>
+        </div>
+    </div>
+    <p>
+        Промежуток
+    </p>
+    <p class="control_input_p">
+        a = <input class="control_input" name="a" type="number" value="-1" min="-100" max="100" step="any" />
+        b = <input class="control_input" name="b" type="number" value="1" min="-100" max="100" step="any" />
+    </p>
+
+    <p>
+        Количество узлов таблицы
+    </p>
+    <p class="control_input_p">
+        D = <input class="control_input" name="divisions_count" type="number" value="5" min="2" max="100000" step="1" />
+    </p>
+
+    <p>
+        Разбиение
+    </p>
+    <p class="control_input_p">
+        N = <input class="control_input" name="n" type="number" value="7" min="1" max="100000" step="1" />
+    </p>
+    <p>
+        Параметр для нахождения решения
+    </p>
+    <p class="control_input_p">
+        t = <input class="control_input" name="t" type="number" value="-1" min="-100" max="100" step="1" />
+    </p>
+
+    <div class="form_radio_group">
+        <div class="form_radio_group-item">
+            <input id="Calculate" name="request_type" type="radio" value="Calculate" checked />
+            <label for="Calculate">
+                Вычислить
+            </label>
+        </div>
+        <div class="form_radio_group-item">
+            <input id="CalculateTable" name="request_type" type="radio" value="CalculateTable" />
+            <label for="CalculateTable">
+                Заполнить таблицу
+            </label>
+        </div>
+        <div class="form_radio_group-item">
+            <input id="CalculateSolution" name="request_type" type="radio" value="CalculateSolution" />
+            <label for="CalculateSolution">
+                Найти решение
+            </label>
+        </div>
+    </div>
+
+    <p>
+        Опции
+    </p>
+    <p class="control_input_p">
+        <input name="is_reserving" type="checkbox" /> Резервирование размерности
+        системы<br>
+        <input name="is_reserving_lis" type="checkbox" /> Резервирование ЛНЗ
+        системы функций
+    </p>
+</form>
+<form id="t4_form" class="control_panel">
+    <p>
+        Промежуток отсчитывая от [0,1]
+    </p>
+    <p class="control_input_p">
+        a = <input class="control_input" name="a" type="number" value="1" min="-0.9" max="100" step="any" />
+        b = <input class="control_input" name="b" type="number" value="1" min="-100" max="100" step="any" />
+    </p>
+
+    <p>
+        Разбиение
+    </p>
+    <p class="control_input_p">
+        По x: N = <input class="control_input" name="n" type="number" value="7" min="3" max="100000" step="1" />
+        По y: M = <input class="control_input" name="m" type="number" value="7" min="3" max="100000" step="1" />
+    </p>
+
+    <p>
+        Параметр, входящий в c
+    </p>
+    <p class="control_input_p">
+        $\mu$ = <input class="control_input" name="mu" type="number" value="1" min="-100" max="100" step="any" />
+    </p>
+</form>
+
+
+
+
+
+
+<div id="t1_data_menu" class="table_div">
+    <table class="data_table">
+        <caption>Данные метода Ритца</caption>
+        <tbody id="t1_table_body">
+            <tr>
+                <td rowspan="2">n</td>
+                <td rowspan="2">$\mu(A)$</td>
+                <td id="td_yn" colspan="3">$y^n(x)$</td>
+                <td id="td_yxyn" colspan="3">$y^x(x)-y^n(x)$</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+<div id="t4_data_menu" class="control_panel">
+    <div class="flex-plots">
+        <div class="flex-plot-table">
+            <div id="t4_surface_plot1"></div>
+        </div>
+        <div class="flex-plot-table">
+            <div id="t4_surface_plot2"></div>
+        </div>
+    </div>
+    <div class="flex-plots">
+        <div class="flex-plot-table">
+            <div id="t4_surface_plot3"></div>
+        </div>
+        <div class="flex-plot-table">
+            <div id="t4_surface_plot4"></div>
+        </div>
+    </div>
+    <div class="flex-plots">
+        <div class="flex-plot-table">
+            <div id="t4_table"></div>
+        </div>
+    </div>
+</div>
