@@ -1,6 +1,8 @@
 use crate::{commands::Storage, error::Error, task6::*, task6_concrete::*};
-use backtrace::SolverBacktrace;
+use backtrace::{BacktraceLevel, SolverBacktraceData};
 use std::sync::Mutex;
+use std::time::Instant;
+use tauri::http::request;
 use tauri::State;
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
@@ -16,6 +18,7 @@ pub struct Task6CalculationRequest {
     is_backtrace: bool,
     first_end_preserving: usize,
     middle_division: usize,
+    backtrace_level: BacktraceLevel,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
@@ -24,7 +27,8 @@ pub struct Task6RequestAnswer {
     relative_errors: Vec<f64>,
     real_solution: Vec<Vec<f64>>,
     solver: String,
-    backtrace: SolverBacktrace,
+    backtrace_data: SolverBacktraceData,
+    delta_time: f64,
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -41,7 +45,8 @@ pub async fn task6_request(
             relative_errors: Vec::<f64>::new(),
             real_solution: Vec::<Vec<f64>>::new(),
             solver: String::new(),
-            backtrace: SolverBacktrace::new(),
+            backtrace_data: SolverBacktraceData::new(),
+            delta_time: 0_f64,
         });
     }
     state.is_busy = true;
@@ -61,17 +66,27 @@ pub async fn task6_request(
             request.middle_division,
         );
 
+        let instant = Instant::now();
+
         solver.solve_ees(
             request.solving_method,
             request.optimization,
             request.calculation,
             request.eps,
             request.max_steps,
+            request.backtrace_level,
         );
 
-        let (absolute_errors, relative_errors) = get_absolute_relative_errors(solver);
+        let delta_time = instant.elapsed().as_secs_f64();
 
-        let real_solution = get_real_solution(solver);
+        let mut absolute_errors: Vec<f64> = Vec::new();
+        let mut relative_errors: Vec<f64> = Vec::new();
+        let mut real_solution: Vec<Vec<f64>> = Vec::new();
+
+        if request.is_backtrace {
+            (absolute_errors, relative_errors) = get_absolute_relative_errors(solver);
+            real_solution = get_real_solution(solver);
+        }
 
         let str = solver.to_string();
         Task6RequestAnswer {
@@ -79,7 +94,8 @@ pub async fn task6_request(
             relative_errors,
             real_solution,
             solver: str,
-            backtrace: solver.backtrace.clone(),
+            backtrace_data: solver.backtrace.backtrace_data.clone(),
+            delta_time,
         }
     };
 

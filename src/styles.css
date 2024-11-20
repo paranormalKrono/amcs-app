@@ -124,6 +124,8 @@ a:active {
 
 .flex-rightitem {
     width: 40%;
+
+    flex-direction: column;
 }
 
 

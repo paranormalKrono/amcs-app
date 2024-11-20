@@ -1,4 +1,5 @@
 use std::{
+    borrow::BorrowMut,
     collections::VecDeque,
     f64::consts::{PI, SQRT_2},
     fmt,
@@ -60,8 +61,8 @@ pub struct EllipticEquationSolver<T: EllipticEquation> {
 
     pub backtrace: SolverBacktrace,
     is_backtrace: bool,
-    first_end_preserving: usize,
-    middle_division: usize,
+    preserving_start_end: usize,
+    division_middle: usize,
 
     t: f64,
 }
@@ -123,8 +124,8 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
             steps_count: 0_usize,
             backtrace: SolverBacktrace::new(),
             is_backtrace: backtrace,
-            first_end_preserving: 8,
-            middle_division: 5,
+            preserving_start_end: 8,
+            division_middle: 5,
 
             t: 0_f64,
         }
@@ -154,8 +155,8 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
         middle_division: usize,
     ) {
         self.is_backtrace = is_backtrace;
-        self.first_end_preserving = first_end_preserving;
-        self.middle_division = middle_division;
+        self.preserving_start_end = first_end_preserving;
+        self.division_middle = middle_division;
     }
 
     pub fn get_size(&self) -> (usize, usize) {
@@ -289,7 +290,7 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
         max_mod
     }
 
-    fn get_functions_result(&self) -> (Matrix, Matrix, Matrix) {
+    fn get_interior_values(&self) -> (Matrix, Matrix, Matrix) {
         let mut mf = vec![vec![0_f64; self.m - 2]; self.n - 2];
         let mut mp = vec![vec![0_f64; self.m - 2]; self.n - 1];
         let mut mq = vec![vec![0_f64; self.m - 1]; self.n - 2];
@@ -331,6 +332,7 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
         calculation: CalculationType,
         eps: f64,
         max_steps: usize,
+        backtrace_level: BacktraceLevel,
     ) {
         if self.steps_count > 0 {
             self.reset_process();
@@ -338,26 +340,22 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
 
         self.calculate_boundaries();
 
-        let (hx, hy) = (self.hx, self.hy);
-        let (hx2, hy2) = (hx * hx, hy * hy);
+        let (hx2, hy2) = self.get_h2();
 
         let (small_delta, big_delta): (f64, f64);
 
         let mut calculated_steps_count: usize = max_steps;
 
         // For backtrace
-        let mut sbd: SolverBacktraceData;
-        let mut dn: f64;
         let mut uk_prev: Vec<Vec<f64>>;
-        let u0_norm: f64;
-        let mut adj_diff: f64;
-        let mut adj_diff_prev: f64;
         let mut ph1ph: f64;
 
         // Parameters
         let mut tau: f64 = 1_f64;
         let mut cheb_params: Vec<usize> = Vec::new();
-        let mut cheb_storage: Vec<f64> = Vec::new();
+        let mut cheb_coeffs: Vec<f64> = Vec::new();
+        let mut cheb_coeffs_iter: std::iter::Cycle<std::slice::Iter<'_, f64>> =
+            cheb_coeffs.iter().cycle();
 
         // Temporary values for solving
         let mut a1: f64;
@@ -371,12 +369,18 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
         let mut avs1: Vec<f64> = Vec::new();
         let mut am: Vec<Vec<f64>> = Vec::new();
 
-        let (tx, rx) = mpsc::channel();
-        let (txr, rxr) = mpsc::channel();
-        let mut handles: Vec<JoinHandle<_>> = Vec::new();
+        // Multithreading
 
-        // Functions values in cells
-        let (mf, mp, mq) = self.get_functions_result();
+        let (tx01, rx10) = mpsc::channel::<f64>();
+        let (tx10, rx01) = mpsc::channel::<f64>();
+        let (txv01, rxv10) = mpsc::channel::<Vec<f64>>();
+        let (txv10, rxv01) = mpsc::channel::<Vec<f64>>();
+
+        //let (tx, rx) = mpsc::channel::<Vec<Vec<f64>>>();
+        //let (txr, rxr) = mpsc::channel::<Vec<Vec<f64>>>();/let mut handles: Vec<JoinHandle<_>> = Vec::new();
+
+        // Functions values
+        let (mf, mp, mq) = self.get_interior_values();
 
         let mut ksi: f64 = 1_f64;
 
@@ -407,19 +411,9 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
                 (small_delta, big_delta) = self.get_delta(&solving_method);
 
                 cheb_params = get_optimal_chebyshev_params(max_steps);
-                let mut cur_cheb = 0_usize;
-                cheb_storage.resize_with(cheb_params.len(), || {
-                    let value = 2_f64
-                        / (big_delta
-                            + small_delta
-                            + (big_delta - small_delta)
-                                * (cheb_params[cur_cheb] as f64
-                                    / (2_f64 * cheb_params.len() as f64)
-                                    * PI)
-                                    .cos());
-                    cur_cheb += 1;
-                    value
-                });
+                cheb_coeffs =
+                    calculate_chebyshev_coefficients(&cheb_params, small_delta, big_delta);
+                cheb_coeffs_iter = cheb_coeffs.iter().cycle();
             }
             SolvingMethod::AlternatingTriangular => {
                 (small_delta, big_delta) = self.get_delta(&solving_method);
@@ -458,18 +452,8 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
                 let g1 = small_delta / (2_f64 + 2_f64 * ksi.sqrt());
                 let g2 = small_delta / (4_f64 * ksi.sqrt());
 
-                let mut cur_cheb = 0_usize;
-                cheb_storage.resize_with(cheb_params.len(), || {
-                    let value = 2_f64
-                        / (g2
-                            + g1
-                            + (g2 - g1)
-                                * (cheb_params[cur_cheb] as f64 / (2 * cheb_params.len()) as f64
-                                    * PI)
-                                    .cos());
-                    cur_cheb += 1;
-                    value
-                });
+                cheb_coeffs = calculate_chebyshev_coefficients(&cheb_params, g1, g2);
+                cheb_coeffs_iter = cheb_coeffs.iter().cycle();
 
                 am = vec![vec![0_f64; self.m]; self.n];
             }
@@ -501,24 +485,16 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
 
                 match optimization {
                     OptimizationType::Parallelism => {
-                        handles.push(thread::spawn(move || loop {
-                            let l: Vec<f64> = match rx.recv() {
-                                Ok(value) => value,
-                                Err(_) => {
-                                    println!("Terminating.");
-                                    break;
-                                }
-                            };
-
-                            parallel3_run_method_secondary(&rx, &txr, &l);
-                        }));
+                        thread::spawn(move || {
+                            parallel3_run_method_second(tx10, rx10, txv10, rxv10);
+                        });
                     }
                     OptimizationType::Multithreading => {}
                     _ => {}
                 }
             }
         }
-        calculated_steps_count *= 8;
+        calculated_steps_count *= 5;
 
         match calculation {
             CalculationType::MaxSteps => {
@@ -530,22 +506,22 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
         }
 
         // Backtrace initializing
-        let mut backtrace_first_end = self.first_end_preserving - 1;
-        let mut backtrace_cur = 0_usize;
         if self.is_backtrace {
-            self.backtrace.tau = tau;
-            self.backtrace.cheb_params = cheb_params.clone();
-
+            self.backtrace.start(
+                backtrace_level,
+                tau,
+                cheb_params,
+                self.steps_count,
+                self.get_discrepancy_zero_norm(&mf),
+                self.preserving_start_end,
+                self.division_middle,
+            );
             uk_prev = self.u.clone();
-            adj_diff_prev = self.get_norm_adj_difference(&uk_prev);
-            u0_norm = self.get_discrepancy_zero_norm(&mf);
             ph1ph = (1_f64 - ksi) / (1_f64 + ksi);
             ph1ph = ph1ph / (1_f64 - ph1ph);
         } else {
             // It's unnecessary, but Rust said otherwise. However, I understand why.
             uk_prev = Vec::new();
-            adj_diff_prev = 0_f64;
-            u0_norm = 0_f64;
             ph1ph = 0_f64;
         }
 
@@ -580,9 +556,26 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
 
         let mut cur_u;
         let mut cur_tau = tau;
-        let mut cheb_id = 0_usize;
 
-        for step in 0..self.steps_count {
+        let bactrace_update = |eq: &mut Self,
+                               cur_tau: f64,
+                               mf: &[Vec<f64>],
+                               mp: &[Vec<f64>],
+                               mq: &[Vec<f64>],
+                               ph1ph: f64,
+                               uk_prev: &[Vec<f64>]| {
+            if eq.is_backtrace && eq.backtrace.check_current_step() {
+                eq.backtrace.add_data(
+                    cur_tau,
+                    eq.get_discrepancy_norm(mf, mp, mq, &eq.u),
+                    eq.get_norm_adj_difference(uk_prev),
+                    ph1ph,
+                    eq.u.clone(),
+                );
+            };
+        };
+
+        for _ in 0..self.steps_count {
             match solving_method {
                 SolvingMethod::SimpleIteration | SolvingMethod::OptimalSimpleIteration => {
                     for i in 1..(self.n - 1) {
@@ -594,21 +587,12 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
                         uq1v[i - 1] = self.u[i][0];
                     }
 
-                    if cheb_id == cheb_params.len() {
-                        cheb_id = 0;
-                    }
-                    cur_tau = cheb_storage[cheb_id];
-
-                    cheb_id += 1;
+                    // Iterator is cycled for this method and len > 0, so we can unwrap it safely.
+                    cur_tau = *cheb_coeffs_iter.next().unwrap();
                 }
                 SolvingMethod::AlternatingTriangularChebyshevsky => {
-                    if cheb_id == cheb_params.len() {
-                        cheb_id = 0;
-                    }
-
-                    cur_tau = cheb_storage[cheb_id];
-
-                    cheb_id += 1;
+                    // Iterator is cycled for this method and len > 0, so we can unwrap it safely.
+                    cur_tau = *cheb_coeffs_iter.next().unwrap();
                 }
                 _ => {}
             }
@@ -826,7 +810,7 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
                             }
                             OptimizationType::Parallelism => {
                                 parallel3_run_method_main(
-                                    &tx, &rxr, &av0, &mut av01, &av02, &mut avs0,
+                                    &tx01, &rx01, &txv01, &rxv01, &av0, &mut av01, &av02, &mut avs0,
                                 );
                             }
                             OptimizationType::Multithreading => {}
@@ -874,7 +858,7 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
                             }
                             OptimizationType::Parallelism => {
                                 parallel3_run_method_main(
-                                    &tx, &rxr, &av1, &mut av11, &av12, &mut avs1,
+                                    &tx01, &rx01, &txv01, &rxv01, &av1, &mut av11, &av12, &mut avs1,
                                 );
                             }
                             OptimizationType::Multithreading => {}
@@ -890,108 +874,94 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
                 }
             }
 
-            if self.is_backtrace {
-                if backtrace_cur == 0 {
-                    if backtrace_first_end == 0 {
-                        backtrace_cur = self.middle_division - 1;
-                    } else {
-                        backtrace_first_end -= 1;
-                    }
-
-                    dn = self.get_discrepancy_norm(&mf, &mp, &mq, &self.u);
-                    adj_diff = self.get_norm_adj_difference(&uk_prev);
-                    sbd = SolverBacktraceData {
-                        step: step + 1,
-                        discrepancy_norm: dn,
-                        relative_discrepancy: dn / u0_norm,
-                        norm_adj_difference: adj_diff,
-                        apposterior_est: ph1ph * adj_diff,
-                        spectral_radius_approach: adj_diff / adj_diff_prev,
-
-                        u: self.u.clone(),
-                    };
-
-                    self.backtrace.add_data(sbd);
-                    self.backtrace.taus.push(cur_tau);
-
-                    uk_prev = self.u.clone();
-                    adj_diff_prev = adj_diff;
-                } else {
-                    backtrace_cur -= 1;
-
-                    if self.steps_count - step < self.first_end_preserving + 3 {
-                        backtrace_first_end = self.first_end_preserving;
-                        backtrace_cur = 0;
-                    }
-                }
-            }
+            bactrace_update(self, cur_tau, &mf, &mp, &mq, ph1ph, &uk_prev);
+            uk_prev = self.u.clone();
         }
     }
 }
 
-fn parallel3_run_method_secondary(rx: &Receiver<Vec<f64>>, txr: &Sender<Vec<f64>>, l: &[f64]) {
-    // l sended
-    let mut d: Vec<f64> = rx.recv().unwrap();
-    let r: Vec<f64> = rx.recv().unwrap();
-    let mut b: Vec<f64> = rx.recv().unwrap();
+fn parallel3_run_method_second(
+    tx10: Sender<f64>,
+    rx10: Receiver<f64>,
+    txv10: Sender<Vec<f64>>,
+    rxv10: Receiver<Vec<f64>>,
+) {
+    loop {
+        let l: Vec<f64> = {
+            let rec = rxv10.recv();
+            match rec {
+                Ok(value) => value,
+                Err(_) => {
+                    break;
+                }
+            }
+        };
+        let mut d = rxv10.recv().unwrap();
+        let r = rxv10.recv().unwrap();
+        let mut b = rxv10.recv().unwrap();
 
-    let n2 = b.len() / 2;
-    let mut c1;
+        let n2 = b.len();
+        let mut c1;
 
-    for i in 1..n2 {
-        c1 = l[i] / d[i - 1];
-        d[i] -= c1 * r[i - 1];
-        b[i] -= c1 * b[i - 1];
+        for i in 1..n2 {
+            c1 = l[i] / d[i - 1];
+            d[i] -= c1 * r[i - 1];
+            b[i] -= c1 * b[i - 1];
+        }
+
+        let mut d20 = rx10.recv().unwrap();
+        let mut b20 = rx10.recv().unwrap();
+
+        let c = l[n2] / d[n2 - 1];
+        d20 -= c * r[n2 - 1];
+        b20 = (b20 - c * b[n2 - 1]) / d20;
+        b[n2 - 1] = (b[n2 - 1] - r[n2 - 1] * b20) / d[n2 - 1];
+
+        tx10.send(b20).unwrap();
+
+        for i in (1..n2).rev() {
+            b[i - 1] = (b[i - 1] - r[i - 1] * b[i]) / d[i - 1];
+        }
+
+        txv10.send(b.to_vec()).unwrap();
     }
-
-    let mut d20 = rx.recv().unwrap()[0];
-    let mut b20 = rx.recv().unwrap()[0];
-
-    let c = l[n2] / d[n2 - 1];
-    d20 -= c * r[n2 - 1];
-    b20 = (b20 - c * b[n2 - 1]) / d20;
-    b[n2 - 1] = (b[n2 - 1] - r[n2 - 1] * b20) / d[n2 - 1];
-
-    txr.send(vec![b20]).unwrap();
-
-    for i in (1..n2).rev() {
-        b[i - 1] = (b[i - 1] - r[i - 1] * b[i]) / d[i - 1];
-    }
-
-    txr.send(b[..n2].to_vec()).unwrap();
 }
 
 fn parallel3_run_method_main(
-    tx: &Sender<Vec<f64>>,
-    rxr: &Receiver<Vec<f64>>,
+    tx01: &Sender<f64>,
+    rx01: &Receiver<f64>,
+    txv01: &Sender<Vec<f64>>,
+    rxv01: &Receiver<Vec<f64>>,
     l: &[f64],
     d: &mut [f64],
     r: &[f64],
     b: &mut [f64],
 ) {
-    let n2 = b.len() / 2;
+    let n = b.len();
+    let n2 = n / 2;
     let mut c2;
 
-    tx.send(l.to_owned()).unwrap();
-    tx.send(d.to_owned()).unwrap();
-    tx.send(r.to_owned()).unwrap();
-    tx.send(b.to_owned()).unwrap();
-    for i in (n2..(b.len() - 1)).rev() {
+    txv01.send(l[0..(n2 + 1)].to_owned()).unwrap();
+    txv01.send(d[0..n2].to_owned()).unwrap();
+    txv01.send(r[0..n2].to_owned()).unwrap();
+    txv01.send(b[0..n2].to_owned()).unwrap();
+
+    for i in (n2..(n - 1)).rev() {
         c2 = r[i] / d[i + 1];
         d[i] -= c2 * l[i + 1];
         b[i] -= c2 * b[i + 1];
     }
 
-    tx.send(vec![d[n2]]).unwrap();
-    tx.send(vec![b[n2]]).unwrap();
-    b[n2] = rxr.recv().unwrap()[0];
+    tx01.send(d[n2]).unwrap();
+    tx01.send(b[n2]).unwrap();
+    b[n2] = rx01.recv().unwrap();
     d[n2] = 1_f64;
 
-    for i in n2..(b.len() - 1) {
+    for i in n2..(n - 1) {
         b[i + 1] = (b[i + 1] - l[i + 1] * b[i]) / d[i + 1];
     }
 
-    b[..n2].clone_from_slice(&rxr.recv().unwrap());
+    b[..n2].clone_from_slice(&rxv01.recv().unwrap());
 }
 
 fn run_method(al: &[f64], ad: &mut [f64], ar: &[f64], b: &mut [f64]) {
@@ -1011,6 +981,26 @@ fn run_method(al: &[f64], ad: &mut [f64], ar: &[f64], b: &mut [f64]) {
     }
 
     //println!("a0\n{:?}\na1\n{:?}\na2\n{:?}\n", a0, a1, a2);
+}
+
+fn calculate_chebyshev_coefficients(
+    cheb_params: &[usize],
+    small_delta: f64,
+    big_delta: f64,
+) -> Vec<f64> {
+    let mut cur_cheb = 0_usize;
+    let mut result = Vec::<f64>::new();
+    result.resize_with(cheb_params.len(), || {
+        let value = 2_f64
+            / (big_delta
+                + small_delta
+                + (big_delta - small_delta)
+                    * (cheb_params[cur_cheb] as f64 / (2 * cheb_params.len()) as f64 * PI).cos());
+        cur_cheb += 1;
+        value
+    });
+
+    result
 }
 
 fn get_optimal_chebyshev_params(n: usize) -> Vec<usize> {

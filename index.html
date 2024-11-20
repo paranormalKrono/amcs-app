@@ -171,6 +171,21 @@
             <input name="is_backtrace" type="checkbox" checked />Обратная трассировка
           </p>
 
+          <div class="form_radio_group">
+            <div class="form_radio_group-item">
+              <input id="bac-radio-1" type="radio" name="backtrace_level" value="Everything">
+              <label for="bac-radio-1">
+                Полное
+              </label>
+            </div>
+            <div class="form_radio_group-item">
+              <input id="bac-radio-2" type="radio" name="backtrace_level" value="NoSteps" checked>
+              <label for="bac-radio-2">
+                Без записи шагов
+              </label>
+            </div>
+          </div>
+
           <p>
             Резервирование первых и последних итераций
           </p>
@@ -187,6 +202,10 @@
               step="1" />
           </p>
 
+          <p class="control_input_p">
+            <input name="is_surface_plots" type="checkbox" checked />Показывать графики
+          </p>
+
         </form>
         <div class="control_panel">
           <button class="control_button" id="button_send_request">
@@ -195,7 +214,13 @@
         </div>
       </div>
       <div class="main_div flex-rightitem">
-        <p id="data_text" class="data_text"></p>
+        <div style="overflow:auto;">
+          <p id="data_text1" class="data_text"></p>
+        </div>
+        <div style="overflow:scroll;">
+          <p>ETAs</p>
+          <p id="data_text2" class="data_text" style="text-wrap:nowrap;"></p>
+        </div>
       </div>
     </div>
   </div>
@@ -240,7 +265,7 @@
         </table>
       </div>
 
-      <div class="control_panel" style="flex-direction: row; align-items: center;">
+      <div style="display:flex; flex-direction: row; justify-content: center;">
         <div id="t6_surface_plot1"></div>
         <div id="t6_surface_plot2"></div>
       </div>

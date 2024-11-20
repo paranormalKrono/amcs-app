@@ -1,3 +1,76 @@
+// fn parallel4_run_method_secondary(rx: &Receiver<Vec<Vec<f64>>>, txr: &Sender<Vec<Vec<f64>>>) {
+//     loop {
+//         let (l, mut d, r, mut b) = {
+//             let rec = rx.recv();
+//             let mut val = match rec {
+//                 Ok(value) => value,
+//                 Err(_) => {
+//                     println!("Terminating.");
+//                     break;
+//                 }
+//             };
+//             (val.remove(0), val.remove(0), val.remove(0), val.remove(0))
+//         };
+//
+//         let n2 = b.len() / 2;
+//         let mut c1;
+//
+//         for i in 1..n2 {
+//             c1 = l[i] / d[i - 1];
+//             d[i] -= c1 * r[i - 1];
+//             b[i] -= c1 * b[i - 1];
+//         }
+//
+//         let m = rx.recv().unwrap();
+//         let mut d20 = m[0][0];
+//         let mut b20 = m[0][1];
+//
+//         let c = l[n2] / d[n2 - 1];
+//         d20 -= c * r[n2 - 1];
+//         b20 = (b20 - c * b[n2 - 1]) / d20;
+//         b[n2 - 1] = (b[n2 - 1] - r[n2 - 1] * b20) / d[n2 - 1];
+//
+//         txr.send(vec![vec![b20]]).unwrap();
+//
+//         for i in (1..n2).rev() {
+//             b[i - 1] = (b[i - 1] - r[i - 1] * b[i]) / d[i - 1];
+//         }
+//
+//         txr.send(vec![b[..n2].to_vec()]).unwrap();
+//     }
+// }
+//
+// fn parallel4_run_method_main(
+//     tx: &Sender<Vec<Vec<f64>>>,
+//     rxr: &Receiver<Vec<Vec<f64>>>,
+//     l: &[f64],
+//     d: &mut [f64],
+//     r: &[f64],
+//     b: &mut [f64],
+// ) {
+//     let n2 = b.len() / 2;
+//     let mut c2;
+//
+//     tx.send(vec![l.to_owned(), d.to_owned(), r.to_owned(), b.to_owned()])
+//         .unwrap();
+//
+//     for i in (n2..(b.len() - 1)).rev() {
+//         c2 = r[i] / d[i + 1];
+//         d[i] -= c2 * l[i + 1];
+//         b[i] -= c2 * b[i + 1];
+//     }
+//
+//     tx.send(vec![vec![d[n2], b[n2]]]).unwrap();
+//     b[n2] = rxr.recv().unwrap()[0][0];
+//     d[n2] = 1_f64;
+//
+//     for i in n2..(b.len() - 1) {
+//         b[i + 1] = (b[i + 1] - l[i + 1] * b[i]) / d[i + 1];
+//     }
+//
+//     b[..n2].clone_from_slice(&rxr.recv().unwrap()[0]);
+// }
+
 // fn parallel2_run_method(al: &[f64], ad: &mut [f64], ar: &[f64], b: &mut [f64]) {
 //     let n2 = b.len() / 2;
 //

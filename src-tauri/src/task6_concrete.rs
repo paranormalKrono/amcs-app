@@ -2,7 +2,7 @@ use core::fmt;
 use std::{f64::consts::PI, vec};
 
 use crate::task6::*;
-use backtrace::SolverBacktraceData;
+use backtrace::SolverBacktraceStep;
 use elliptic_equation::EllipticEquation;
 
 pub struct EE3;
@@ -68,7 +68,8 @@ pub fn get_real_solution(solver: &EllipticEquationSolver<EE3>) -> Vec<Vec<f64>> 
 }
 
 pub fn get_absolute_relative_errors(solver: &EllipticEquationSolver<EE3>) -> (Vec<f64>, Vec<f64>) {
-    let backtrace_datas: &Vec<SolverBacktraceData> = solver.backtrace.datas.as_ref();
+    let backtrace_datas: &Vec<SolverBacktraceStep> =
+        solver.backtrace.backtrace_data.solver_steps.as_ref();
 
     let mut absolute_errors = vec![0_f64; backtrace_datas.len()];
     let mut relative_errors = vec![0_f64; backtrace_datas.len()];
