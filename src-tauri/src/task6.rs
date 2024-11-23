@@ -1,10 +1,12 @@
 use std::{
-    borrow::BorrowMut,
     collections::VecDeque,
     f64::consts::{PI, SQRT_2},
     fmt,
-    sync::mpsc::{self, Receiver, Sender},
-    thread::{self, JoinHandle},
+    sync::{
+        mpsc::{self, Receiver, Sender},
+        Arc, Mutex,
+    },
+    thread::{self},
     vec,
 };
 
@@ -95,6 +97,26 @@ impl<T: EllipticEquation + fmt::Display> fmt::Display for EllipticEquationSolver
         write!(f, "{}", buf)
     }
 }
+
+struct RawTrisf64 {
+    l: *mut f64,
+    d: *mut f64,
+    r: *mut f64,
+    b: *mut f64,
+}
+
+impl RawTrisf64 {
+    fn new() -> Self {
+        RawTrisf64 {
+            l: std::ptr::null_mut(),
+            d: std::ptr::null_mut(),
+            r: std::ptr::null_mut(),
+            b: std::ptr::null_mut(),
+        }
+    }
+}
+
+unsafe impl Send for RawTrisf64 {}
 
 impl<T: EllipticEquation> EllipticEquationSolver<T> {
     pub fn new(
@@ -371,13 +393,9 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
 
         // Multithreading
 
-        let (tx01, rx10) = mpsc::channel::<f64>();
-        let (tx10, rx01) = mpsc::channel::<f64>();
-        let (txv01, rxv10) = mpsc::channel::<Vec<f64>>();
-        let (txv10, rxv01) = mpsc::channel::<Vec<f64>>();
-
-        //let (tx, rx) = mpsc::channel::<Vec<Vec<f64>>>();
-        //let (txr, rxr) = mpsc::channel::<Vec<Vec<f64>>>();/let mut handles: Vec<JoinHandle<_>> = Vec::new();
+        let (tx01, rx10) = mpsc::channel::<usize>();
+        let (tx10, rx01) = mpsc::channel::<usize>();
+        let raw_tris: Arc<Mutex<RawTrisf64>> = Arc::new(Mutex::new(RawTrisf64::new()));
 
         // Functions values
         let (mf, mp, mq) = self.get_interior_values();
@@ -485,8 +503,9 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
 
                 match optimization {
                     OptimizationType::Parallelism => {
+                        let r = raw_tris.clone();
                         thread::spawn(move || {
-                            parallel3_run_method_second(tx10, rx10, txv10, rxv10);
+                            parallel_raw_run_method_second(tx10, rx10, r);
                         });
                     }
                     OptimizationType::Multithreading => {}
@@ -508,13 +527,15 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
         // Backtrace initializing
         if self.is_backtrace {
             self.backtrace.start(
-                backtrace_level,
+                SolverBacktraceCfg {
+                    level: backtrace_level,
+                    steps_count: self.steps_count,
+                    u0_norm: self.get_discrepancy_zero_norm(&mf),
+                    preserving_start_end: self.preserving_start_end,
+                    division_middle: self.division_middle,
+                },
                 tau,
                 cheb_params,
-                self.steps_count,
-                self.get_discrepancy_zero_norm(&mf),
-                self.preserving_start_end,
-                self.division_middle,
             );
             uk_prev = self.u.clone();
             ph1ph = (1_f64 - ksi) / (1_f64 + ksi);
@@ -557,13 +578,13 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
         let mut cur_u;
         let mut cur_tau = tau;
 
-        let bactrace_update = |eq: &mut Self,
-                               cur_tau: f64,
-                               mf: &[Vec<f64>],
-                               mp: &[Vec<f64>],
-                               mq: &[Vec<f64>],
-                               ph1ph: f64,
-                               uk_prev: &[Vec<f64>]| {
+        let backtrace_update = |eq: &mut Self,
+                                cur_tau: f64,
+                                mf: &[Vec<f64>],
+                                mp: &[Vec<f64>],
+                                mq: &[Vec<f64>],
+                                ph1ph: f64,
+                                uk_prev: &[Vec<f64>]| {
             if eq.is_backtrace && eq.backtrace.check_current_step() {
                 eq.backtrace.add_data(
                     cur_tau,
@@ -779,7 +800,7 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
                 }
                 SolvingMethod::AlternatingDirections => {
                     for j in 0..(self.m - 2) {
-                        // Filling matrix and vector of system for each row
+                        // Filling vector b
                         for i in 0..(self.n - 2) {
                             uq1 = self.u[i + 1][j];
                             ut = self.u[i + 1][j + 1];
@@ -796,6 +817,7 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
                         av01[0] = 1_f64;
                         av01[self.n - 1] = 1_f64;
 
+                        // Filling tridiagonal matrix as 3 vectors
                         a1 = -tau / 2_f64 / hx2;
                         for t in 1..(self.n - 1) {
                             av0[t] = a1 * mp[t - 1][j];
@@ -803,31 +825,32 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
                             av01[t] = 1_f64 - av0[t] - av02[t];
                         }
 
-                        // Calculating solution
+                        // Calculating solution by passing method
                         match optimization {
                             OptimizationType::Nothing => {
                                 run_method(&av0, &mut av01, &av02, &mut avs0);
                             }
                             OptimizationType::Parallelism => {
-                                parallel3_run_method_main(
-                                    &tx01, &rx01, &txv01, &rxv01, &av0, &mut av01, &av02, &mut avs0,
+                                parallel_raw_run_method_main(
+                                    &tx01, &rx01, &raw_tris, &mut av0, &mut av01, &mut av02,
+                                    &mut avs0,
                                 );
                             }
                             OptimizationType::Multithreading => {}
                         }
 
-                        // Writing
+                        // Writing result from vector b to column j of temporary matrix am
                         for i in 0..(self.n - 2) {
                             am[i][j] = avs0[i + 1];
                         }
                     }
 
+                    // Copying calculated result from matrix am to matrix u
                     for (i, ami) in am.iter().enumerate() {
                         self.u[i + 1][1..((self.m - 2) + 1)].copy_from_slice(ami);
                     }
 
                     for i in 0..(self.n - 2) {
-                        // Filling matrix and vector of system for each column
                         for j in 0..(self.m - 2) {
                             up1 = self.u[i][j + 1];
                             ut = self.u[i + 1][j + 1];
@@ -851,20 +874,19 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
                             av11[t] = 1_f64 - av1[t] - av1[t];
                         }
 
-                        // Calculating solution
                         match optimization {
                             OptimizationType::Nothing => {
                                 run_method(&av1, &mut av11, &av12, &mut avs1);
                             }
                             OptimizationType::Parallelism => {
-                                parallel3_run_method_main(
-                                    &tx01, &rx01, &txv01, &rxv01, &av1, &mut av11, &av12, &mut avs1,
+                                parallel_raw_run_method_main(
+                                    &tx01, &rx01, &raw_tris, &mut av1, &mut av11, &mut av12,
+                                    &mut avs1,
                                 );
                             }
                             OptimizationType::Multithreading => {}
                         }
 
-                        // Writing
                         am[i][..(self.m - 2)].copy_from_slice(&avs1[1..((self.m - 2) + 1)]);
                     }
 
@@ -874,21 +896,22 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
                 }
             }
 
-            bactrace_update(self, cur_tau, &mf, &mp, &mq, ph1ph, &uk_prev);
+            backtrace_update(self, cur_tau, &mf, &mp, &mq, ph1ph, &uk_prev);
             uk_prev = self.u.clone();
         }
     }
 }
 
-fn parallel3_run_method_second(
-    tx10: Sender<f64>,
-    rx10: Receiver<f64>,
-    txv10: Sender<Vec<f64>>,
-    rxv10: Receiver<Vec<f64>>,
+fn parallel_raw_run_method_second(
+    tx10: Sender<usize>,
+    rx10: Receiver<usize>,
+    rxr10: Arc<Mutex<RawTrisf64>>,
 ) {
+    // Checking for new data
     loop {
-        let l: Vec<f64> = {
-            let rec = rxv10.recv();
+        // Checking if main thread is closed
+        let n2 = {
+            let rec = rx10.recv();
             match rec {
                 Ok(value) => value,
                 Err(_) => {
@@ -896,88 +919,115 @@ fn parallel3_run_method_second(
                 }
             }
         };
-        let mut d = rxv10.recv().unwrap();
-        let r = rxv10.recv().unwrap();
-        let mut b = rxv10.recv().unwrap();
+        let RawTrisf64 {
+            mut l,
+            mut d,
+            mut r,
+            mut b,
+        } = *rxr10.lock().unwrap();
 
-        let n2 = b.len();
-        let mut c1;
+        let mut c;
 
-        for i in 1..n2 {
-            c1 = l[i] / d[i - 1];
-            d[i] -= c1 * r[i - 1];
-            b[i] -= c1 * b[i - 1];
+        // pointers at 0
+        for _ in 1..n2 {
+            unsafe {
+                l = l.add(1);
+                c = *l / *d;
+                d = d.add(1);
+                *d -= c * *r;
+                c *= *b;
+                b = b.add(1);
+                *b -= c;
+                r = r.add(1);
+            }
+        }
+        // pointers at n2-1
+
+        rx10.recv().unwrap();
+
+        unsafe {
+            l = l.add(1);
+            c = *l / *d;
+            d = d.add(1);
+            *d -= c * *r;
+            c *= *b;
+            b = b.add(1);
+            *b = (*b - c) / *d;
+            c = *r * *b;
+            b = b.sub(1);
+            d = d.sub(1);
+            *b = (*b - c) / *d;
+        }
+        // pointers at n2-1
+
+        tx10.send(n2).unwrap();
+
+        for _ in (1..n2).rev() {
+            unsafe {
+                r = r.sub(1);
+                c = *r * *b;
+                b = b.sub(1);
+                d = d.sub(1);
+                *b = (*b - c) / *d;
+            }
         }
 
-        let mut d20 = rx10.recv().unwrap();
-        let mut b20 = rx10.recv().unwrap();
-
-        let c = l[n2] / d[n2 - 1];
-        d20 -= c * r[n2 - 1];
-        b20 = (b20 - c * b[n2 - 1]) / d20;
-        b[n2 - 1] = (b[n2 - 1] - r[n2 - 1] * b20) / d[n2 - 1];
-
-        tx10.send(b20).unwrap();
-
-        for i in (1..n2).rev() {
-            b[i - 1] = (b[i - 1] - r[i - 1] * b[i]) / d[i - 1];
-        }
-
-        txv10.send(b.to_vec()).unwrap();
+        tx10.send(n2).unwrap();
     }
 }
 
-fn parallel3_run_method_main(
-    tx01: &Sender<f64>,
-    rx01: &Receiver<f64>,
-    txv01: &Sender<Vec<f64>>,
-    rxv01: &Receiver<Vec<f64>>,
-    l: &[f64],
+fn parallel_raw_run_method_main(
+    tx01: &Sender<usize>,
+    rx01: &Receiver<usize>,
+    txr01: &Arc<Mutex<RawTrisf64>>,
+    l: &mut [f64],
     d: &mut [f64],
-    r: &[f64],
+    r: &mut [f64],
     b: &mut [f64],
 ) {
     let n = b.len();
     let n2 = n / 2;
+
+    *txr01.lock().unwrap() = RawTrisf64 {
+        l: l.as_mut_ptr(),
+        d: d.as_mut_ptr(),
+        r: r.as_mut_ptr(),
+        b: b.as_mut_ptr(),
+    };
+    tx01.send(n2).unwrap();
+
     let mut c2;
-
-    txv01.send(l[0..(n2 + 1)].to_owned()).unwrap();
-    txv01.send(d[0..n2].to_owned()).unwrap();
-    txv01.send(r[0..n2].to_owned()).unwrap();
-    txv01.send(b[0..n2].to_owned()).unwrap();
-
     for i in (n2..(n - 1)).rev() {
         c2 = r[i] / d[i + 1];
         d[i] -= c2 * l[i + 1];
         b[i] -= c2 * b[i + 1];
     }
 
-    tx01.send(d[n2]).unwrap();
-    tx01.send(b[n2]).unwrap();
-    b[n2] = rx01.recv().unwrap();
+    tx01.send(n).unwrap();
+    rx01.recv().unwrap(); // stop
     d[n2] = 1_f64;
 
     for i in n2..(n - 1) {
         b[i + 1] = (b[i + 1] - l[i + 1] * b[i]) / d[i + 1];
     }
 
-    b[..n2].clone_from_slice(&rxv01.recv().unwrap());
+    rx01.recv().unwrap();
 }
 
-fn run_method(al: &[f64], ad: &mut [f64], ar: &[f64], b: &mut [f64]) {
+fn run_method(l: &[f64], d: &mut [f64], r: &[f64], b: &mut [f64]) {
     let n = b.len();
 
     let mut g: f64;
     for i in 1..n {
-        g = al[i] / ad[i - 1];
-        ad[i] -= g * ar[i - 1];
+        g = l[i] / d[i - 1];
+        d[i] -= g * r[i - 1];
         b[i] -= g * b[i - 1];
     }
 
-    b[n - 1] /= ad[n - 1];
+    b[n - 1] /= d[n - 1];
 
     for i in (0..(n - 1)).rev() {
-        b[i] = (b[i] - ar[i] * b[i + 1]) / ad[i];
+        b[i] = (b[i] - r[i] * b[i + 1]) / d[i];
     }
 
     //println!("a0\n{:?}\na1\n{:?}\na2\n{:?}\n", a0, a1, a2);

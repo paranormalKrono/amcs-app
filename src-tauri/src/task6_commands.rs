@@ -2,7 +2,6 @@ use crate::{commands::Storage, error::Error, task6::*, task6_concrete::*};
 use backtrace::{BacktraceLevel, SolverBacktraceData};
 use std::sync::Mutex;
 use std::time::Instant;
-use tauri::http::request;
 use tauri::State;
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]

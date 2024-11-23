@@ -87,6 +87,14 @@ pub struct SolverBacktrace {
     counter_middle: usize,
 }
 
+pub struct SolverBacktraceCfg {
+    pub level: BacktraceLevel,
+    pub steps_count: usize,
+    pub u0_norm: f64,
+    pub preserving_start_end: usize,
+    pub division_middle: usize,
+}
+
 impl SolverBacktrace {
     pub fn new() -> SolverBacktrace {
         SolverBacktrace {
@@ -107,30 +115,20 @@ impl SolverBacktrace {
         }
     }
 
-    pub fn start(
-        &mut self,
-        level: BacktraceLevel,
-        tau: f64,
-        cheb_params: Vec<usize>,
-        steps_count: usize,
-        u0_norm: f64,
-        preserving_start_end: usize,
-        division_middle: usize,
-    ) {
-        self.level = level;
+    pub fn start(&mut self, cfg: SolverBacktraceCfg, tau: f64, cheb_params: Vec<usize>) {
+        self.level = cfg.level;
+        self.steps_count = cfg.steps_count;
 
-        self.backtrace_data.tau = tau;
-        self.backtrace_data.cheb_params = cheb_params;
+        self.u0_norm = cfg.u0_norm;
 
-        self.steps_count = steps_count;
-
-        self.u0_norm = u0_norm;
-
-        self.preserving_start_end = preserving_start_end;
-        self.division_middle = division_middle;
+        self.preserving_start_end = cfg.preserving_start_end;
+        self.division_middle = cfg.division_middle;
 
         // Inner state
         self.counter_start_end = self.preserving_start_end;
+
+        self.backtrace_data.tau = tau;
+        self.backtrace_data.cheb_params = cheb_params;
     }
 
     pub fn check_current_step(&mut self) -> bool {
