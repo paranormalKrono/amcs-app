@@ -16,21 +16,26 @@ const button_change_task = document.getElementById("button_change_task") as HTML
 const button_send_request = document.getElementById("button_send_request") as HTMLButtonElement;
 
 
-
+enum BacktraceLevel {
+    None = "None",
+    Tables = "Tables",
+    Graphs = "Graphs",
+    Full = "Full",
+}
 
 type request6 = {
     solving_method: string,
-    optimization: string,
     t: number,
     eps: number,
     calculation: string,
     max_steps: number,
     n: number,
     m: number,
-    is_backtrace: boolean,
+    optimization: string,
+    threads_count: number,
+    backtrace_level: BacktraceLevel,
     first_end_preserving: number,
     middle_division: number,
-    backtrace_level: string,
 }
 
 type RequestType = request6;
@@ -62,10 +67,13 @@ type data6solbacktracedata = {
 type data6 = {
     solver: string,
     real_solution: number[][],
-    absolute_errors: number[],
-    relative_errors: number[],
+    solution: number[][],
     backtrace_data: data6solbacktracedata,
     delta_time: number,
+    steps_absolute_errors: number[],
+    steps_relative_errors: number[],
+    absolute_errors: number[][],
+    relative_errors: number[][],
 }
 
 type DataType = data6;
@@ -215,16 +223,17 @@ function get_request_text(request: RequestType) {
             let request6 = request as request6;
 
             text = `Solving method: ${request6.solving_method.toString()}\n`
-                + `optimization: ${request6.optimization.toString()}\n`
                 + `t: ${request6.t.toString()}\n`
                 + `eps: ${request6.eps.toString()}\n`
                 + `calculation: ${request6.calculation.toString()}\n`
                 + `max_steps: ${request6.max_steps.toString()}\n`
                 + `n: ${request6.n.toString()}\n`
                 + `m: ${request6.m.toString()}\n`
-                + `is_backtrace: ${request6.is_backtrace.toString()}\n`
+                + `optimization: ${request6.optimization.toString()}\n`
+                + `threads_count: ${request6.threads_count.toString()}\n`;
+            + `backtrace_level: ${request6.backtrace_level.toString()}\n`
                 + `first_end_preserving: ${request6.first_end_preserving.toString()}\n`
-                + `middle_division: ${request6.middle_division.toString()}\n`;
+                + `middle_division: ${request6.middle_division.toString()}\n`
             break;
         default:
     }
@@ -248,7 +257,7 @@ async function send_request_and_get_asnwer(request: RequestType) {
             let data = response as DataType;
 
             data_text1.innerText = get_data_text(data);
-            data_text2.innerText = `${data.delta_time.toString().padEnd(6, "0")} ${request.optimization.toString()} ${request.backtrace_level.toString()} ${request.solving_method.toString()}\n${data_text2.innerText}`;
+            data_text2.innerText = `${data.delta_time.toString().padEnd(6, "0")} ${request.optimization.toString()} ${request.solving_method.toString()}\n${data_text2.innerText}`;
 
             cur_response_function(request, data);
         })
@@ -282,6 +291,9 @@ const t6_grid1_header = document.getElementById("t6_grid1_header") as HTMLElemen
 const t6_grid2_header = document.getElementById("t6_grid2_header") as HTMLElement;
 const t6_surface_plot1 = document.getElementById("t6_surface_plot1") as HTMLElement;
 const t6_surface_plot2 = document.getElementById("t6_surface_plot2") as HTMLElement;
+const t6_surface_plot3 = document.getElementById("t6_surface_plot3") as HTMLElement;
+const t6_surface_plot4 = document.getElementById("t6_surface_plot4") as HTMLElement;
+
 
 function fill_request_data() {
     let f = forms[cur_menu_id];
@@ -290,17 +302,17 @@ function fill_request_data() {
         case 6:
             request = {
                 solving_method: f.solving_method.value,
-                optimization: f.optimization.value,
                 t: parseFloat(f.t.value),
                 eps: parseFloat(f.eps.value),
                 calculation: f.calculation.value,
                 max_steps: Number(f.max_steps.value),
                 n: Number(f.n.value),
                 m: Number(f.m.value),
-                is_backtrace: f.is_backtrace.checked,
+                optimization: f.optimization.value,
+                threads_count: Number(f.threads_count.value),
+                backtrace_level: f.backtrace_level.value,
                 first_end_preserving: Number(f.first_end_preserving.value),
                 middle_division: Number(f.middle_division.value),
-                backtrace_level: f.backtrace_level.value,
             }
             break;
         default:
@@ -326,123 +338,152 @@ function task6_response(request: RequestType, data: DataType) {
     data = data as data6;
 
 
-    if (request.is_backtrace) {
-        clear_children_except(t6_table_body, 1);
-        clear_children_except(t6_grid1_header, 1);
-        clear_children_except(t6_grid2_header, 1);
-        clear_children_except(t6_grid1_body, 1);
-        clear_children_except(t6_grid2_body, 1);
-        clear_children_except(t6_surface_plot1, 0);
-        clear_children_except(t6_surface_plot2, 0);
+    clear_children_except(t6_table_body, 1);
+    clear_children_except(t6_grid1_header, 1);
+    clear_children_except(t6_grid2_header, 1);
+    clear_children_except(t6_grid1_body, 1);
+    clear_children_except(t6_grid2_body, 1);
+    clear_children_except(t6_surface_plot1, 0);
+    clear_children_except(t6_surface_plot2, 0);
+    clear_children_except(t6_surface_plot3, 0);
+    clear_children_except(t6_surface_plot4, 0);
 
-        const absolute_errors = data.absolute_errors;
-        const relative_errors = data.relative_errors;
+    let u = data.solution;
+
+    let cur_text;
+    if (request.backtrace_level == BacktraceLevel.Full || request.backtrace_level == BacktraceLevel.Tables) {
+        const steps_absolute_errors = data.steps_absolute_errors;
+        const steps_relative_errors = data.steps_relative_errors;
         const taus = data.backtrace_data.taus;
 
-
-        let cur_text;
-        if (request.backtrace_level != 'NoSteps') {
-            for (let i = 0; i < data.backtrace_data.solver_steps.length; ++i) {
-                let solver_step = data.backtrace_data.solver_steps[i];
-                cur_text = '<tr class="content">';
-                cur_text += '<td class="sticky_cell">' + solver_step.step + '</td>';
-                cur_text += td_cell(taus[i]);
-                cur_text += td_cell(solver_step.discrepancy_norm);
-                cur_text += td_cell(solver_step.relative_discrepancy);
-                cur_text += td_cell(absolute_errors[i]);
-                cur_text += td_cell(relative_errors[i]);
-                cur_text += td_cell(solver_step.norm_adj_difference);
-                cur_text += td_cell(solver_step.apposterior_est);
-                cur_text += td_cell(solver_step.spectral_radius_approach);
-                cur_text += '</tr>';
-                t6_table_body.insertAdjacentHTML("beforeend", cur_text);
-            }
-
-            let u = data.backtrace_data.solver_steps[data.backtrace_data.solver_steps.length - 1].u;
-            let sol = data.real_solution;
-
-            let a = 0;
-            let hx = Math.PI / (request.n - 1);
-
-            let b = 0;
-            let hy = 1 / (request.m - 1);
-
-            cur_text = '';
-            for (let j = 0; j < request.m; ++j) {
-                cur_text += '<td class="sticky_cell">' + (b + hy * j).toString() + '</td>';
-            }
-            t6_grid1_header.insertAdjacentHTML('beforeend', cur_text);
-            t6_grid2_header.insertAdjacentHTML('beforeend', cur_text);
-
-
-            // add_to_output("Solution:\n\t" + sol);
-            // add_to_output("Calculated solution\n\t" + u);
-            // add_to_output("Tau\n\t" + data.backtrace.tau);
-            // add_to_output("Cheb params\n\t" + data.backtrace.cheb_params);
-
-
-            for (let i = 0; i < request.n; ++i) {
-
-                cur_text = '<tr class="content">';
-                cur_text += '<td class="sticky_cell">' + (a + hx * i).toString() + '</td>';
-                for (let j = 0; j < request.m; ++j) {
-                    cur_text += td_cell(u[i][j].toString());
-                }
-                cur_text += '</tr>';
-                t6_grid1_body.insertAdjacentHTML('beforeend', cur_text);
-
-                cur_text = '<tr class="content">';
-                cur_text += '<td class="sticky_cell">' + (a + hx * i).toString() + '</td>';
-                for (let j = 0; j < request.m; ++j) {
-                    cur_text += td_cell(sol[i][j].toString());
-                }
-                cur_text += '</tr>';
-                t6_grid2_body.insertAdjacentHTML('beforeend', cur_text);
-            }
-
-            let layout = {
-                scene: { camera: { eye: { x: 1.97, y: -2.2, z: 0.3 } } },
-                autosize: false,
-                width: 700,
-                height: 700,
-                margin: {
-                    l: 15,
-                    r: 30,
-                    b: 45,
-                    t: 80,
-                },
-                paper_bgcolor: "#1b1b1b",
-            };
-
-            let data_u1 = [{
-                z: sol,
-                type: 'surface',
-                contours: {
-                    //coloring: 'heatmap',
-                    z: {
-                        show: true,
-                        usecolormap: true,
-                        highlightcolor: "#42f462",
-                        project: { z: true }
-                    }
-                }
-            }];
-
-            let data_u2 = [{
-                z: u,
-                type: 'surface',
-                contours: {
-                    z: {
-                        show: true,
-                        usecolormap: true,
-                        highlightcolor: "#42f462",
-                        project: { z: true }
-                    }
-                }
-            }];
-
-            Plotly.newPlot(t6_surface_plot1, data_u1 as Plotly.Data[], layout);
-            Plotly.newPlot(t6_surface_plot2, data_u2 as Plotly.Data[], layout);
+        for (let i = 0; i < data.backtrace_data.solver_steps.length; ++i) {
+            let solver_step = data.backtrace_data.solver_steps[i];
+            cur_text = '<tr class="content">';
+            cur_text += '<td class="sticky_cell">' + solver_step.step + '</td>';
+            cur_text += td_cell(taus[i]);
+            cur_text += td_cell(solver_step.discrepancy_norm);
+            cur_text += td_cell(solver_step.relative_discrepancy);
+            cur_text += td_cell(steps_absolute_errors[i]);
+            cur_text += td_cell(steps_relative_errors[i]);
+            cur_text += td_cell(solver_step.norm_adj_difference);
+            cur_text += td_cell(solver_step.apposterior_est);
+            cur_text += td_cell(solver_step.spectral_radius_approach);
+            cur_text += '</tr>';
+            t6_table_body.insertAdjacentHTML("beforeend", cur_text);
         }
+
+
+        let a = 0;
+        let hx = Math.PI / (request.n - 1);
+
+        let b = 0;
+        let hy = 1 / (request.m - 1);
+
+        cur_text = '';
+        for (let j = 0; j < request.m; ++j) {
+            cur_text += '<td class="sticky_cell">' + (b + hy * j).toString() + '</td>';
+        }
+        t6_grid1_header.insertAdjacentHTML('beforeend', cur_text);
+        t6_grid2_header.insertAdjacentHTML('beforeend', cur_text);
+
+
+        // add_to_output("Solution:\n\t" + sol);
+        // add_to_output("Calculated solution\n\t" + u);
+        // add_to_output("Tau\n\t" + data.backtrace.tau);
+        // add_to_output("Cheb params\n\t" + data.backtrace.cheb_params);
+
+
+        for (let i = 0; i < request.n; ++i) {
+
+            cur_text = '<tr class="content">';
+            cur_text += '<td class="sticky_cell">' + (a + hx * i).toString() + '</td>';
+            for (let j = 0; j < request.m; ++j) {
+                cur_text += td_cell(u[i][j].toString());
+            }
+            cur_text += '</tr>';
+            t6_grid1_body.insertAdjacentHTML('beforeend', cur_text);
+
+            cur_text = '<tr class="content">';
+            cur_text += '<td class="sticky_cell">' + (a + hx * i).toString() + '</td>';
+            for (let j = 0; j < request.m; ++j) {
+                cur_text += td_cell(data.real_solution[i][j].toString());
+            }
+            cur_text += '</tr>';
+            t6_grid2_body.insertAdjacentHTML('beforeend', cur_text);
+        }
+
+    }
+
+    if (request.backtrace_level == BacktraceLevel.Full || request.backtrace_level == BacktraceLevel.Graphs) {
+        let layout = {
+            scene: { camera: { eye: { x: 1.97, y: -2.2, z: 0.3 } } },
+            autosize: false,
+            width: 700,
+            height: 700,
+            margin: {
+                l: 15,
+                r: 30,
+                b: 45,
+                t: 80,
+            },
+            paper_bgcolor: "#1b1b1b",
+        };
+
+        let graph_real_solution = [{
+            z: data.real_solution,
+            type: 'surface',
+            contours: {
+                z: {
+                    show: true,
+                    usecolormap: true,
+                    highlightcolor: "#42f462",
+                    project: { z: true }
+                }
+            }
+        }];
+
+        let graph_calculated_solution = [{
+            z: u,
+            type: 'surface',
+            contours: {
+                z: {
+                    show: true,
+                    usecolormap: true,
+                    highlightcolor: "#42f462",
+                    project: { z: true }
+                }
+            }
+        }];
+
+        let graph_absolute_errors = [{
+            z: data.absolute_errors,
+            type: 'surface',
+            contours: {
+                z: {
+                    show: true,
+                    usecolormap: true,
+                    highlightcolor: "#42f462",
+                    project: { z: true }
+                }
+            }
+        }];
+
+        let graph_relative_errors = [{
+            z: data.relative_errors,
+            type: 'surface',
+            contours: {
+                z: {
+                    show: true,
+                    usecolormap: true,
+                    highlightcolor: "#42f462",
+                    project: { z: true }
+                }
+            }
+        }];
+
+        Plotly.newPlot(t6_surface_plot1, graph_real_solution as Plotly.Data[], layout);
+        Plotly.newPlot(t6_surface_plot2, graph_calculated_solution as Plotly.Data[], layout);
+        Plotly.newPlot(t6_surface_plot3, graph_absolute_errors as Plotly.Data[], layout);
+        Plotly.newPlot(t6_surface_plot4, graph_relative_errors as Plotly.Data[], layout);
     }
 }

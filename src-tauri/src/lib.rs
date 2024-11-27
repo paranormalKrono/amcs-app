@@ -17,7 +17,7 @@ use tauri::generate_handler;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    println!("Hello from Rust!");
+    // println!("Hello from Rust!");
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(Mutex::new(commands::Storage::default()))

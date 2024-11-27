@@ -65,8 +65,10 @@ impl SolverBacktraceData {
 
 #[derive(PartialEq, PartialOrd, Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub enum BacktraceLevel {
-    Everything,
-    NoSteps,
+    None,
+    Tables,
+    Graphs,
+    Full,
 }
 
 #[derive(Debug, Clone)]
@@ -98,7 +100,7 @@ pub struct SolverBacktraceCfg {
 impl SolverBacktrace {
     pub fn new() -> SolverBacktrace {
         SolverBacktrace {
-            level: BacktraceLevel::Everything,
+            level: BacktraceLevel::Full,
             backtrace_data: SolverBacktraceData::new(),
 
             steps_count: 0_usize,
@@ -160,7 +162,7 @@ impl SolverBacktrace {
         u: Vec<Vec<f64>>,
     ) {
         self.backtrace_data.taus.push(cur_tau);
-        if self.level == BacktraceLevel::Everything {
+        if self.level == BacktraceLevel::Full || self.level == BacktraceLevel::Tables {
             self.backtrace_data
                 .solver_steps
                 .push(SolverBacktraceStep::new(

@@ -44,7 +44,6 @@ pub fn get_task6() -> Option<EllipticEquationSolver<EE3>> {
         (1_f64, 1_f64),
         mu,
         (5, 5),
-        true,
     ))
 }
 
@@ -67,26 +66,23 @@ pub fn get_real_solution(solver: &EllipticEquationSolver<EE3>) -> Vec<Vec<f64>> 
     solution
 }
 
-pub fn get_absolute_relative_errors(solver: &EllipticEquationSolver<EE3>) -> (Vec<f64>, Vec<f64>) {
+pub fn get_steps_absolute_relative_errors(
+    solver: &EllipticEquationSolver<EE3>,
+    sol: &[Vec<f64>],
+) -> (Vec<f64>, Vec<f64>) {
     let backtrace_datas: &Vec<SolverBacktraceStep> =
         solver.backtrace.backtrace_data.solver_steps.as_ref();
 
-    let mut absolute_errors = vec![0_f64; backtrace_datas.len()];
-    let mut relative_errors = vec![0_f64; backtrace_datas.len()];
+    let mut steps_absolute_errors = vec![0_f64; backtrace_datas.len()];
+    let mut steps_relative_errors = vec![0_f64; backtrace_datas.len()];
 
-    let (hx, hy) = solver.get_h();
     let (n, m) = solver.get_size();
 
     let mut max_mod = 0_f64;
 
-    let mut fi: f64;
-    let mut fj: f64;
-    for i in 1..(n - 1) {
-        fi = i as f64;
-        for j in 1..(m - 1) {
-            fj = j as f64;
-
-            max_mod = f64::max(max_mod, sol(fi * hx, fj * hy).abs());
+    for si in sol.iter().take(n - 1).skip(1) {
+        for sij in si.iter().take(m - 1).skip(1) {
+            max_mod = f64::max(max_mod, sij.abs());
         }
     }
 
@@ -94,19 +90,36 @@ pub fn get_absolute_relative_errors(solver: &EllipticEquationSolver<EE3>) -> (Ve
 
     for k in 0..backtrace_datas.len() {
         max_mod = 0_f64;
-        for i in 1..(n - 1) {
-            fi = i as f64;
-            for j in 1..(m - 1) {
-                fj = j as f64;
-
-                max_mod = f64::max(
-                    max_mod,
-                    (backtrace_datas[k].u[i][j] - sol(fi * hx, fj * hy)).abs(),
-                );
+        for (i, si) in sol.iter().enumerate().take(n - 1).skip(1) {
+            for (j, sij) in si.iter().enumerate().take(m - 1).skip(1) {
+                max_mod = f64::max(max_mod, (backtrace_datas[k].u[i][j] - sij).abs());
             }
         }
-        absolute_errors[k] = max_mod;
-        relative_errors[k] = max_mod / u0_error;
+        steps_absolute_errors[k] = max_mod;
+        steps_relative_errors[k] = max_mod / u0_error;
+    }
+
+    (steps_absolute_errors, steps_relative_errors)
+}
+
+pub fn get_absolute_relative_errors(
+    solver: &EllipticEquationSolver<EE3>,
+    sol: &[Vec<f64>],
+) -> (Vec<Vec<f64>>, Vec<Vec<f64>>) {
+    let (n, m) = solver.get_size();
+
+    let relative_errors = {
+        let (mf, mp, mq) = solver.get_interior_values();
+        solver.get_discrepancy_matrix(&mf, &mp, &mq, &solver.u)
+    };
+
+    let mut absolute_errors = vec![vec![0_f64; m]; n];
+
+    let u = &solver.u;
+    for i in 1..(n - 1) {
+        for j in 1..(m - 1) {
+            absolute_errors[i][j] = (u[i][j] - sol[i][j]).abs();
+        }
     }
 
     (absolute_errors, relative_errors)

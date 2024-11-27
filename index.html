@@ -100,27 +100,6 @@
             </div>
           </div>
 
-          <div class="form_radio_group">
-            <div class="form_radio_group-item">
-              <input id="opt-radio-1" type="radio" name="optimization" value="Nothing">
-              <label for="opt-radio-1">
-                Ничего
-              </label>
-            </div>
-            <div class="form_radio_group-item">
-              <input id="opt-radio-2" type="radio" name="optimization" value="Parallelism" checked>
-              <label for="opt-radio-2">
-                Папаллелизм
-              </label>
-            </div>
-            <div class="form_radio_group-item">
-              <input id="opt-radio-3" type="radio" name="optimization" value="Multithreading">
-              <label for="opt-radio-3">
-                Многопоточность
-              </label>
-            </div>
-          </div>
-
           <p>
             Параметр
           </p>
@@ -162,26 +141,61 @@
             Разбиение
           </p>
           <p class="control_input_p">
-            N = <input class="control_input" name="n" type="number" value="15" min="3" max="100000" step="1" />
-            M = <input class="control_input" name="m" type="number" value="7" min="3" max="100000" step="1" />
-          </p>
-
-
-          <p class="control_input_p">
-            <input name="is_backtrace" type="checkbox" checked />Обратная трассировка
+            N = <input class="control_input" name="n" type="number" value="12" min="3" max="100000" step="1" />
+            M = <input class="control_input" name="m" type="number" value="12" min="3" max="100000" step="1" />
           </p>
 
           <div class="form_radio_group">
             <div class="form_radio_group-item">
-              <input id="bac-radio-1" type="radio" name="backtrace_level" value="Everything">
-              <label for="bac-radio-1">
-                Полное
+              <input id="opt-radio-1" type="radio" name="optimization" value="Nothing">
+              <label for="opt-radio-1">
+                Ничего
               </label>
             </div>
             <div class="form_radio_group-item">
-              <input id="bac-radio-2" type="radio" name="backtrace_level" value="NoSteps" checked>
-              <label for="bac-radio-2">
-                Без записи шагов
+              <input id="opt-radio-2" type="radio" name="optimization" value="Parallelism">
+              <label for="opt-radio-2">
+                Папаллелизм
+              </label>
+            </div>
+            <div class="form_radio_group-item">
+              <input id="opt-radio-3" type="radio" name="optimization" value="Multithreading" checked>
+              <label for="opt-radio-3">
+                Многопоточность
+              </label>
+            </div>
+          </div>
+
+          <p>
+            Количество потоков
+          </p>
+          <p class="control_input_p">
+            <input class="control_input" name="threads_count" type="number" value="3" min="1" max="100000" step="1" />
+          </p>
+
+          <div class="form_radio_group">
+            <div class="form_radio_group-item">
+              <input id="backtrace-radio-1" type="radio" name="backtrace_level" value="None">
+              <label for="backtrace-radio-1">
+                Без обратной трассировки
+              </label>
+            </div>
+            <div class="form_radio_group-item">
+              <input id="backtrace-radio-2" type="radio" name="backtrace_level" value="Tables">
+              <label for="backtrace-radio-2">
+                С таблицами
+              </label>
+            </div>
+            <div class="form_radio_group-item">
+              <input id="backtrace-radio-3" type="radio" name="backtrace_level" value="Graphs">
+              <label for="backtrace-radio-3">
+                С графиками
+              </label>
+            </div>
+            <div class="form_radio_group-item">
+              <input id="backtrace-radio-4" type="radio" name="backtrace_level" value="Full" checked>
+              <label for="backtrace-radio-4">
+                Полная трассировка
               </label>
             </div>
           </div>
@@ -200,10 +214,6 @@
           <p class="control_input_p">
             <input class="control_input" name="middle_division" type="number" value="15" min="3" max="100000"
               step="1" />
-          </p>
-
-          <p class="control_input_p">
-            <input name="is_surface_plots" type="checkbox" checked />Показывать графики
           </p>
 
         </form>
@@ -268,6 +278,10 @@
       <div style="display:flex; flex-direction: row; justify-content: center;">
         <div id="t6_surface_plot1"></div>
         <div id="t6_surface_plot2"></div>
+      </div>
+      <div style="display:flex; flex-direction: row; justify-content: center;">
+        <div id="t6_surface_plot3"></div>
+        <div id="t6_surface_plot4"></div>
       </div>
     </div>
 
