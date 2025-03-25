@@ -1,54 +1,14 @@
-use core::fmt;
-use std::{f64::consts::PI, vec};
+use equations::*;
+use std::vec;
 
 use crate::task6::*;
 use backtrace::SolverBacktraceStep;
-use elliptic_equation::EllipticEquation;
 
-pub struct EE3;
-
-impl EllipticEquation for EE3 {
-    fn f(&self, x: f64, y: f64) -> f64 {
-        2_f64 * x.sin() * y.cos()
-    }
-
-    fn p(&self, _x: f64, _y: f64) -> f64 {
-        1_f64
-    }
-    fn q(&self, _x: f64, _y: f64) -> f64 {
-        1_f64
-    }
-}
-
-impl fmt::Display for EE3 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let buf: String = "EE3: p = 1, q = 1, f = 2sin(x)cos(y)".to_string();
-
-        write!(f, "{}", buf)
-    }
-}
-
-fn mu(x: f64, y: f64) -> f64 {
-    x.sin() * y.cos()
-}
-
-fn sol(x: f64, y: f64) -> f64 {
-    x.sin() * y.cos()
-}
-
-pub fn get_task6() -> Option<EllipticEquationSolver<EE3>> {
-    Some(EllipticEquationSolver::new(
-        EE3 {},
-        (PI, 1_f64),
-        (1_f64, 1_f64),
-        (1_f64, 1_f64),
-        mu,
-        (5, 5),
-    ))
-}
-
-pub fn get_real_solution(solver: &EllipticEquationSolver<EE3>) -> Vec<Vec<f64>> {
-    let (hx, hy) = solver.get_h();
+pub fn get_real_solution(
+    solver: &EllipticEquationSolver,
+    sol: impl Fn(f64, f64) -> f64,
+) -> Vec<Vec<f64>> {
+    let (hx, hy) = solver.get_hxy();
     let (n, m) = solver.get_size();
 
     let mut solution = vec![vec![0_f64; m]; n];
@@ -67,7 +27,7 @@ pub fn get_real_solution(solver: &EllipticEquationSolver<EE3>) -> Vec<Vec<f64>> 
 }
 
 pub fn get_steps_absolute_relative_errors(
-    solver: &EllipticEquationSolver<EE3>,
+    solver: &EllipticEquationSolver,
     sol: &[Vec<f64>],
 ) -> (Vec<f64>, Vec<f64>) {
     let backtrace_datas: &Vec<SolverBacktraceStep> =
@@ -102,15 +62,17 @@ pub fn get_steps_absolute_relative_errors(
     (steps_absolute_errors, steps_relative_errors)
 }
 
-pub fn get_absolute_relative_errors(
-    solver: &EllipticEquationSolver<EE3>,
+pub fn get_absolute_relative_errors<T: EllipticEquation>(
+    eeq: &T,
+    solver: &EllipticEquationSolver,
     sol: &[Vec<f64>],
 ) -> (Vec<Vec<f64>>, Vec<Vec<f64>>) {
     let (n, m) = solver.get_size();
+    let (hx, hy) = solver.get_hxy();
 
     let relative_errors = {
-        let (mf, mp, mq) = solver.get_interior_values();
-        solver.get_discrepancy_matrix(&mf, &mp, &mq, &solver.u)
+        let (mf, mp, mq) = solver.get_elliptic_interior_values(eeq, (hx, hy));
+        solver.get_discrepancy_matrix((hx, hy), &mf, &mp, &mq, &solver.u)
     };
 
     let mut absolute_errors = vec![vec![0_f64; m]; n];

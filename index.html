@@ -46,6 +46,46 @@
     <div class="flex-divider">
       <div class="main_div flex-leftitem">
         <form id="t6_form" class="control_panel">
+
+          <p>
+            Уравнение
+          </p>
+          <p class="control_input_p">
+            $p(x,y)$ = <input class="control_input" name="function_p" type="text" value="x + 1.0" />
+            $q(x,y)$ = <input class="control_input" name="function_q" type="text" value="0.0" />
+            $c(x,y)$ = <input class="control_input" name="function_c" type="text" value="-1.0" />
+            $f(x,y)$ = <input class="control_input" name="function_f" type="text" value="2.0 * sin(x) * cos(y)" />
+          </p>
+          <p class="control_input_p">
+            $\mu(x,y)$ = <input class="control_input" name="function_mu" type="text" value="sin(x) * cos(y)" />
+          </p>
+          <p class="control_input_p">
+            solution(x,y) = <input class="control_input" name="function_sol" type="text" value="sin(x) * cos(y)" />
+          </p>
+
+          <p>
+            Область от 0
+          </p>
+          <p class="control_input_p">
+            x = <input class="control_input" name="area_x" type="number" value="1.0" min="0.01" max="100" step="0.01" />
+            y = <input class="control_input" name="area_y" type="number" value="0.1" min="0.01" max="100" step="0.01" />
+          </p>
+
+          <p>
+            Ограничения
+          </p>
+          <p class="control_input_p">
+            На $p(x,y)$ [<input class="control_input" name="function_p_bound_left" type="number" value="1" min="-100"
+              max="100" step="0.1" />,
+            <input class="control_input" name="function_p_bound_right" type="number" value="1" min="-100" max="100"
+              step="0.1" />]
+            На $q(x,y)$
+            [<input class="control_input" name="function_q_bound_left" type="number" value="1" min="-100" max="100"
+              step="0.1" />,
+            <input class="control_input" name="function_q_bound_right" type="number" value="1" min="-100" max="100"
+              step="0.1" />]
+          </p>
+
           <p>
             Метод решения
           </p>
@@ -101,11 +141,35 @@
           </div>
 
           <p>
+            Разбиение
+          </p>
+          <p class="control_input_p">
+            N = <input class="control_input" name="n" type="number" value="12" min="3" max="100000" step="1" />
+            M = <input class="control_input" name="m" type="number" value="12" min="3" max="100000" step="1" />
+          </p>
+
+          <p>
             Параметр
           </p>
           <p class="control_input_p">
             t = <input class="control_input" name="t" type="number" value="0.0" min="1e-32" max="100000" step="1e-2" />
           </p>
+
+
+          <div class="form_radio_group">
+            <div class="form_radio_group-item">
+              <input id="calc-radio-1" type="radio" name="calculation" value="MaxSteps" checked>
+              <label for="calc-radio-1">
+                Введённое количество итераций
+              </label>
+            </div>
+            <div class="form_radio_group-item">
+              <input id="calc-radio-2" type="radio" name="calculation" value="Calculated">
+              <label for="calc-radio-2">
+                Вычисленное по эпсилон
+              </label>
+            </div>
+          </div>
 
           <p>
             Число шагов
@@ -124,30 +188,7 @@
 
           <div class="form_radio_group">
             <div class="form_radio_group-item">
-              <input id="calc-radio-1" type="radio" name="calculation" value="MaxSteps" checked>
-              <label for="calc-radio-1">
-                Введённое
-              </label>
-            </div>
-            <div class="form_radio_group-item">
-              <input id="calc-radio-2" type="radio" name="calculation" value="Calculated">
-              <label for="calc-radio-2">
-                Вычисленное по эпсилон
-              </label>
-            </div>
-          </div>
-
-          <p>
-            Разбиение
-          </p>
-          <p class="control_input_p">
-            N = <input class="control_input" name="n" type="number" value="12" min="3" max="100000" step="1" />
-            M = <input class="control_input" name="m" type="number" value="12" min="3" max="100000" step="1" />
-          </p>
-
-          <div class="form_radio_group">
-            <div class="form_radio_group-item">
-              <input id="opt-radio-1" type="radio" name="optimization" value="Nothing">
+              <input id="opt-radio-1" type="radio" name="optimization" value="Nothing" checked>
               <label for="opt-radio-1">
                 Ничего
               </label>
@@ -159,9 +200,15 @@
               </label>
             </div>
             <div class="form_radio_group-item">
-              <input id="opt-radio-3" type="radio" name="optimization" value="Multithreading" checked>
+              <input id="opt-radio-3" type="radio" name="optimization" value="Multithreading">
               <label for="opt-radio-3">
                 Многопоточность
+              </label>
+            </div>
+            <div class="form_radio_group-item">
+              <input id="opt-radio-4" type="radio" name="optimization" value="Combined">
+              <label for="opt-radio-4">
+                Комбинированный
               </label>
             </div>
           </div>
@@ -201,7 +248,7 @@
           </div>
 
           <p>
-            Резервирование первых и последних итераций
+            Количество выводимых первых и последних итераций
           </p>
           <p class="control_input_p">
             <input class="control_input" name="first_end_preserving" type="number" value="15" min="3" max="100000"

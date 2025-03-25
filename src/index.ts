@@ -24,15 +24,33 @@ enum BacktraceLevel {
 }
 
 type request6 = {
+    function_p: string,
+    function_q: string,
+    function_c: string,
+    function_f: string,
+    function_mu: string,
+    function_sol: string,
+
+    area_x: number,
+    area_y: number,
+
+    function_p_bound_left: number,
+    function_p_bound_right: number,
+    function_q_bound_left: number,
+    function_q_bound_right: number,
+
     solving_method: string,
-    t: number,
-    eps: number,
-    calculation: string,
-    max_steps: number,
     n: number,
     m: number,
+    t: number,
+
+    calculation: string,
+    max_steps: number,
+    eps: number,
+
     optimization: string,
     threads_count: number,
+
     backtrace_level: BacktraceLevel,
     first_end_preserving: number,
     middle_division: number,
@@ -167,9 +185,6 @@ function stop_timer() {
 }
 
 function get_time_difference(): number {
-    // alert("Prev t " + previous_time);
-    // alert("New t " + new_time);
-    // alert("Diff " + (new_time - previous_time));
     return (new_time - previous_time) / 1000;
 }
 
@@ -201,11 +216,6 @@ function get_data_text(data: DataType): string {
             let data6 = data as data6;
 
             text = `${data6.solver}\n\n\n`
-                // + `Real solution:\n${data6.real_solution.toString()}\n\n`
-                // + `Absolute errors:\n${data6.absolute_errors.toString()}\n\n`
-                // + `Relative errors:\n${data6.relative_errors.toString()}\n\n`
-                // + `Tau:\n\t${data6.backtrace.tau}\n\n`
-                // + `Taus:\n\t${data6.backtrace.taus.toString()}\n\n`
                 + `Chebyshev parameters:\n\t${data6.backtrace_data.cheb_params.toString()}\n\n\n`
                 + `ETA:\n\t${data6.delta_time}`;
             break;
@@ -220,20 +230,35 @@ function get_request_text(request: RequestType) {
 
     switch (cur_menu_n) {
         case 6:
-            let request6 = request as request6;
+            let r6 = request as request6;
 
-            text = `Solving method: ${request6.solving_method.toString()}\n`
-                + `t: ${request6.t.toString()}\n`
-                + `eps: ${request6.eps.toString()}\n`
-                + `calculation: ${request6.calculation.toString()}\n`
-                + `max_steps: ${request6.max_steps.toString()}\n`
-                + `n: ${request6.n.toString()}\n`
-                + `m: ${request6.m.toString()}\n`
-                + `optimization: ${request6.optimization.toString()}\n`
-                + `threads_count: ${request6.threads_count.toString()}\n`;
-            + `backtrace_level: ${request6.backtrace_level.toString()}\n`
-                + `first_end_preserving: ${request6.first_end_preserving.toString()}\n`
-                + `middle_division: ${request6.middle_division.toString()}\n`
+            text = `p(x,y) = ${r6.function_p}`
+                + `q(x,y) = ${r6.function_q}\n`
+                + `c(x,y) = ${r6.function_c}\n`
+                + `f(x,y) = ${r6.function_f}\n`
+                + `mu(x,y) = ${r6.function_mu}\n`
+                + `solution(x,y) = ${r6.function_sol}\n`
+
+                + `Area: X: [0,${r6.area_x}], Y:[0,${r6.area_y}]\n`
+
+                + `p boundaries: [${r6.function_p_bound_left},${r6.function_p_bound_right}]\n`
+                + `q boundaries: [${r6.function_q_bound_left},${r6.function_q_bound_right}]\n`
+
+                + `Solving method: ${r6.solving_method.toString()}\n`
+                + `n: ${r6.n.toString()}\n`
+                + `m: ${r6.m.toString()}\n`
+                + `t: ${r6.t.toString()}\n`
+
+                + `calculation: ${r6.calculation.toString()}\n`
+                + `max_steps: ${r6.max_steps.toString()}\n`
+                + `eps: ${r6.eps.toString()}\n`
+
+                + `optimization: ${r6.optimization.toString()}\n`
+                + `threads_count: ${r6.threads_count.toString()}\n`
+
+                + `backtrace_level: ${r6.backtrace_level.toString()}\n`
+                + `first_end_preserving: ${r6.first_end_preserving.toString()}\n`
+                + `middle_division: ${r6.middle_division.toString()}\n`;
             break;
         default:
     }
@@ -301,15 +326,33 @@ function fill_request_data() {
     switch (cur_menu_n) {
         case 6:
             request = {
+                function_p: f.function_p.value,
+                function_q: f.function_q.value,
+                function_c: f.function_c.value,
+                function_f: f.function_f.value,
+                function_mu: f.function_mu.value,
+                function_sol: f.function_sol.value,
+
+                area_x: parseFloat(f.area_x.value),
+                area_y: parseFloat(f.area_y.value),
+
+                function_p_bound_left: parseFloat(f.function_p_bound_left.value),
+                function_p_bound_right: parseFloat(f.function_p_bound_right.value),
+                function_q_bound_left: parseFloat(f.function_q_bound_left.value),
+                function_q_bound_right: parseFloat(f.function_q_bound_right.value),
+
                 solving_method: f.solving_method.value,
-                t: parseFloat(f.t.value),
-                eps: parseFloat(f.eps.value),
-                calculation: f.calculation.value,
-                max_steps: Number(f.max_steps.value),
                 n: Number(f.n.value),
                 m: Number(f.m.value),
+                t: parseFloat(f.t.value),
+
+                calculation: f.calculation.value,
+                eps: parseFloat(f.eps.value),
+                max_steps: Number(f.max_steps.value),
+
                 optimization: f.optimization.value,
                 threads_count: Number(f.threads_count.value),
+
                 backtrace_level: f.backtrace_level.value,
                 first_end_preserving: Number(f.first_end_preserving.value),
                 middle_division: Number(f.middle_division.value),
@@ -385,12 +428,6 @@ function task6_response(request: RequestType, data: DataType) {
         }
         t6_grid1_header.insertAdjacentHTML('beforeend', cur_text);
         t6_grid2_header.insertAdjacentHTML('beforeend', cur_text);
-
-
-        // add_to_output("Solution:\n\t" + sol);
-        // add_to_output("Calculated solution\n\t" + u);
-        // add_to_output("Tau\n\t" + data.backtrace.tau);
-        // add_to_output("Cheb params\n\t" + data.backtrace.cheb_params);
 
 
         for (let i = 0; i < request.n; ++i) {

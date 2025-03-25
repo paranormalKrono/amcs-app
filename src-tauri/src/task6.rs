@@ -8,10 +8,10 @@ use std::{
 };
 
 pub mod backtrace;
-pub mod elliptic_equation;
+pub mod equations;
 
 use backtrace::*;
-use elliptic_equation::*;
+use equations::*;
 
 type Matrix = Vec<Vec<f64>>;
 
@@ -32,6 +32,7 @@ pub enum OptimizationType {
     Nothing,
     Parallelism,
     Multithreading,
+    Combined,
 }
 
 #[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
@@ -41,19 +42,13 @@ pub enum CalculationType {
 }
 
 #[derive(Debug)]
-pub struct EllipticEquationSolver<T: EllipticEquation> {
-    elliptic_equation: T,
-
+pub struct EllipticEquationSolver {
     area: (f64, f64),
     p_boundaries: (f64, f64),
     q_boundaries: (f64, f64),
-    mu: fn(f64, f64) -> f64,
 
     n: usize,
     m: usize,
-
-    hx: f64,
-    hy: f64,
 
     pub u: Vec<Vec<f64>>,
     steps_count: usize,
@@ -66,11 +61,11 @@ pub struct EllipticEquationSolver<T: EllipticEquation> {
     t: f64,
 }
 
-impl<T: EllipticEquation + fmt::Display> fmt::Display for EllipticEquationSolver<T> {
+impl fmt::Display for EllipticEquationSolver {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let (hx, hy) = self.get_hxy();
         let buf: String = format!(
-            "Problem: {}\n
-            Area: {:?}\n
+            "Area: {:?}\n
             P boundaries: {:?}\n
             Q boundaries: {:?}\n
             N = {}\n
@@ -79,14 +74,13 @@ impl<T: EllipticEquation + fmt::Display> fmt::Display for EllipticEquationSolver
             hy = {}\n
             Steps count = {}\n
             t = {}\n",
-            self.elliptic_equation,
             self.area,
             self.p_boundaries,
             self.q_boundaries,
             self.n,
             self.m,
-            self.hx,
-            self.hy,
+            hx,
+            hy,
             self.steps_count,
             self.t,
         );
@@ -121,53 +115,59 @@ struct RawTrisf64 {
 unsafe impl Send for RawTrisf64Mut {}
 unsafe impl Send for RawTrisf64 {}
 
-impl<T: EllipticEquation> EllipticEquationSolver<T> {
-    pub fn new(
-        elliptic_equation: T,
-        area: (f64, f64),
-        p_boundaries: (f64, f64),
-        q_boundaries: (f64, f64),
-        mu: fn(f64, f64) -> f64,
-        (n, m): (usize, usize),
-    ) -> EllipticEquationSolver<T> {
+pub struct SolvingCfg {
+    pub solving_method: SolvingMethod,
+    pub calculation: CalculationType,
+    pub max_steps: usize,
+    pub eps: f64,
+    pub optimization: OptimizationType,
+    pub threads_count: usize,
+}
+
+impl EllipticEquationSolver {
+    pub fn new() -> EllipticEquationSolver {
         EllipticEquationSolver {
-            elliptic_equation,
+            area: (0_f64, 0_f64),
+            p_boundaries: (0_f64, 0_f64),
+            q_boundaries: (0_f64, 0_f64),
 
-            area,
-            p_boundaries,
-            q_boundaries,
-            mu,
+            n: 0_usize,
+            m: 0_usize,
 
-            n,
-            m,
-
-            hx: area.0 / ((n - 1) as f64),
-            hy: area.1 / ((m - 1) as f64),
-
-            u: vec![vec![0_f64; m]; n],
+            u: Vec::new(),
             steps_count: 0_usize,
             backtrace: SolverBacktrace::new(),
             backtrace_level: BacktraceLevel::None,
-            preserving_start_end: 8,
-            division_middle: 5,
+            preserving_start_end: 0,
+            division_middle: 0,
 
             t: 0_f64,
         }
     }
 
     pub fn reset_process(&mut self) {
-        self.u = vec![vec![0_f64; self.m]; self.n];
+        self.u = Vec::new();
         self.steps_count = 0_usize;
         self.backtrace.clear();
     }
 
+    pub fn set_boundaries(&mut self, pl: f64, pr: f64, ql: f64, qr: f64) {
+        self.p_boundaries = (pl, pr);
+        self.q_boundaries = (ql, qr);
+    }
+
+    pub fn set_area(&mut self, lx: f64, ly: f64) {
+        let new_area = (lx, ly);
+        if self.area != new_area {
+            self.area = new_area;
+            self.reset_process();
+        }
+    }
+
     pub fn set_size(&mut self, n: usize, m: usize) {
         if (self.n != n || self.m != m) && n >= 3 && m >= 3 {
-            self.hx = self.area.0 / ((n - 1) as f64);
-            self.hy = self.area.1 / ((m - 1) as f64);
             self.n = n;
             self.m = m;
-
             self.reset_process();
         }
     }
@@ -187,12 +187,15 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
         (self.n, self.m)
     }
 
-    pub fn get_h(&self) -> (f64, f64) {
-        (self.hx, self.hy)
+    pub fn get_hx(&self) -> f64 {
+        self.area.0 / ((self.n - 1) as f64)
     }
 
-    pub fn get_h2(&self) -> (f64, f64) {
-        (self.hx * self.hx, self.hy * self.hy)
+    pub fn get_hxy(&self) -> (f64, f64) {
+        (
+            self.area.0 / ((self.n - 1) as f64),
+            self.area.1 / ((self.m - 1) as f64),
+        )
     }
 
     // fn check_delta_abs_equality(&self) -> bool {
@@ -201,8 +204,7 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
     //     false
     // }
 
-    fn get_delta(&self, solving_method: &SolvingMethod) -> (f64, f64) {
-        let (hx, hy) = self.get_h();
+    fn get_delta(&self, (hx, hy): (f64, f64), solving_method: &SolvingMethod) -> (f64, f64) {
         let (lx, ly) = self.area;
 
         let (c1, c2) = self.p_boundaries;
@@ -241,34 +243,40 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
         }
     }
 
-    fn calculate_boundaries(&mut self) {
+    fn calculate_boundaries<T: EllipticEquation>(
+        &mut self,
+        eeq: &T,
+        (hx, hy): (f64, f64),
+        u: &mut [Vec<f64>],
+    ) {
+        let (n, m) = self.get_size();
         let (lx, ly) = self.area;
+        let mu = |x, y| eeq.mu(x, y);
 
         let mut fi: f64;
-        for i in 0..self.n {
+        for (i, ui) in u.iter_mut().enumerate().take(n) {
             fi = i as f64;
-            self.u[i][0] = (self.mu)(fi * self.hx, 0_f64);
-            self.u[i][self.m - 1] = (self.mu)(fi * self.hx, ly);
+            ui[0] = (mu)(fi * hx, 0_f64);
+            ui[m - 1] = (mu)(fi * hx, ly);
         }
 
         let mut fj: f64;
-        for j in 1..(self.m - 1) {
+        for j in 1..(m - 1) {
             fj = j as f64;
-            self.u[0][j] = (self.mu)(0_f64, fj * self.hy);
-            self.u[self.n - 1][j] = (self.mu)(lx, fj * self.hy);
+            u[0][j] = (mu)(0_f64, fj * hy);
+            u[n - 1][j] = (mu)(lx, fj * hy);
         }
     }
 
     pub fn get_discrepancy_matrix(
         &self,
+        (hx2, hy2): (f64, f64),
         mf: &[Vec<f64>],
         mp: &[Vec<f64>],
         mq: &[Vec<f64>],
         u: &[Vec<f64>],
     ) -> Vec<Vec<f64>> {
         let mut discr: Vec<Vec<f64>> = vec![vec![0_f64; self.m]; self.n];
-
-        let (hx2, hy2) = self.get_h2();
 
         for i in 1..(self.n - 1) {
             for j in 1..(self.m - 1) {
@@ -284,14 +292,13 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
 
     fn get_discrepancy_norm(
         &self,
+        (hx2, hy2): (f64, f64),
         mf: &[Vec<f64>],
         mp: &[Vec<f64>],
         mq: &[Vec<f64>],
         u: &[Vec<f64>],
     ) -> f64 {
         let mut max_mod = 0_f64;
-
-        let (hx2, hy2) = self.get_h2();
 
         for i in 1..(self.n - 1) {
             for j in 1..(self.m - 1) {
@@ -325,73 +332,137 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
         max_mod
     }
 
-    fn get_norm_adj_difference(&self, uk_prev: &[Vec<f64>]) -> f64 {
+    fn get_norm_adj_difference(&self, u: &[Vec<f64>], uk_prev: &[Vec<f64>]) -> f64 {
         let mut max_mod = 0_f64;
 
         for (i, ui) in uk_prev.iter().enumerate().take(self.n - 1).skip(1) {
             for (j, uij) in ui.iter().enumerate().take(self.m - 1).skip(1) {
-                max_mod = f64::max(max_mod, (uij - self.u[i][j]).abs())
+                max_mod = f64::max(max_mod, (uij - u[i][j]).abs())
             }
         }
 
         max_mod
     }
 
-    pub fn get_interior_values(&self) -> (Matrix, Matrix, Matrix) {
+    pub fn get_elliptic_interior_values<T: EllipticEquation>(
+        &self,
+        eeq: &T,
+        (hx, hy): (f64, f64),
+    ) -> (Matrix, Matrix, Matrix) {
         let mut mf = vec![vec![0_f64; self.m - 2]; self.n - 2];
         let mut mp = vec![vec![0_f64; self.m - 2]; self.n - 1];
         let mut mq = vec![vec![0_f64; self.m - 1]; self.n - 2];
 
-        let (hx, hy) = self.get_h();
-
         // Calculating functions results
         for i in 0..mf.len() {
             for j in 0..mf[0].len() {
-                mf[i][j] = self
-                    .elliptic_equation
-                    .f((i + 1) as f64 * hx, (j + 1) as f64 * hy);
+                mf[i][j] = eeq.f((i + 1) as f64 * hx, (j + 1) as f64 * hy);
             }
         }
 
         for i in 0..mp.len() {
             for j in 0..mp[0].len() {
-                mp[i][j] = self
-                    .elliptic_equation
-                    .p((i as f64 + 0.5_f64) * hx, (j + 1) as f64 * hy);
+                mp[i][j] = eeq.p((i as f64 + 0.5_f64) * hx, (j + 1) as f64 * hy);
             }
         }
 
         for i in 0..mq.len() {
             for j in 0..mq[0].len() {
-                mq[i][j] = self
-                    .elliptic_equation
-                    .q((i + 1) as f64 * hx, (j as f64 + 0.5_f64) * hy);
+                mq[i][j] = eeq.q((i + 1) as f64 * hx, (j as f64 + 0.5_f64) * hy);
             }
         }
 
         (mf, mp, mq)
     }
 
-    pub fn solve_ees(
-        &mut self,
-        solving_method: SolvingMethod,
-        calculation: CalculationType,
-        eps: f64,
-        max_steps: usize,
-        optimization: OptimizationType,
-        threads_count: usize,
-    ) {
+    pub fn solve_he<T: HyperbolicEquation>(&mut self, he: &T, cfg: SolvingCfg) {
+        let SolvingCfg {
+            solving_method,
+            calculation,
+            max_steps,
+            eps,
+            optimization,
+            threads_count,
+        } = cfg;
+
+        let (h, ht) = self.get_hxy();
+        let h2 = h * h;
+
         if self.steps_count > 0 {
             self.reset_process();
         }
 
-        self.calculate_boundaries();
+        let (n, m) = (self.n, self.m);
+        let mut u = vec![vec![0_f64; m]; n];
+
+        let p = |x| he.p(x, 0_f64);
+        let b = |x, t| he.q(x, t);
+        let c = |x, t| he.c(x, t);
+        let f = |x, t| he.f(x, t);
+
+        let phi = |x: f64| 0_f64;
+        let alpha1 = |t: f64| 0_f64;
+        let alpha2 = |t: f64| 0_f64;
+        let alpha = |t: f64| 0_f64;
+        let beta1 = |t: f64| 0_f64;
+        let beta2 = |t: f64| 0_f64;
+        let beta = |t: f64| 0_f64;
+
+        let tau = self.t;
+
+        // ui0
+        for (i, ui) in u.iter_mut().enumerate().take(n) {
+            ui[0] = phi(i as f64 * h);
+        }
+
+        let mut fi: f64;
+        let mut fj: f64;
+
+        let mut tmp: f64;
+
+        for j in 1..(max_steps + 1) {
+            fj = j as f64;
+            for i in 1..(n - 1) {
+                fi = i as f64;
+                u[i][j] = u[i][j - 1]
+                    + tau
+                        * (p(fi * h) * (u[i + 1][j - 1] - u[i][j - 1]) / h2
+                            - p((fi - 1_f64) * h) * (u[i][j - 1] + u[i - 1][j - 1]) / h2
+                            + b(fi * h, fj * ht) * (u[i + 1][j - 1] - u[i - 1][j - 1])
+                                / (2_f64 * h)
+                            + c(fi * h, fj * ht) * u[i][j - 1]
+                            + f(fi * h, (fj - 1_f64) * fj));
+            }
+
+            tmp = alpha2(fj * ht);
+            u[0][j] = (alpha(fj * ht) + tmp * (2_f64 * u[1][j] - u[2][j] / 2_f64) / h)
+                / (alpha1(fj * ht) + 1.5_f64 / h * tmp);
+            tmp = beta2(fj * ht);
+            u[n - 1][j] = (beta(fj * ht) + tmp * (2_f64 * u[n - 2][j] - u[n - 1][j] / 2_f64))
+                / (beta1(fj * ht) + 1.5_f64 / h * tmp);
+        }
+    }
+
+    pub fn solve_ees<T: EllipticEquation>(&mut self, eeq: &T, cfg: SolvingCfg) {
+        let SolvingCfg {
+            solving_method,
+            calculation,
+            max_steps,
+            eps,
+            optimization,
+            threads_count,
+        } = cfg;
+
+        let (hx, hy) = self.get_hxy();
+        let (hx2, hy2) = (hx * hx, hy * hy);
+
+        if self.steps_count > 0 {
+            self.reset_process();
+        }
 
         let (n, m) = (self.n, self.m);
-        let (hx2, hy2) = self.get_h2();
-        // let &mut u = self.u.borrow_mut();
-
-        let (small_delta, big_delta): (f64, f64);
+        let mut u = vec![vec![0_f64; m]; n];
+        self.calculate_boundaries(eeq, (hx, hy), &mut u);
 
         let mut calculated_steps_count: usize = max_steps;
 
@@ -407,8 +478,9 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
             cheb_coeffs.iter().cycle();
 
         // Functions values
-        let (mf, mp, mq) = self.get_interior_values();
+        let (mf, mp, mq) = self.get_elliptic_interior_values(eeq, (hx, hy));
 
+        let (small_delta, big_delta): (f64, f64);
         let mut ksi: f64 = 1_f64;
 
         // Temporary values for solving
@@ -437,19 +509,19 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
 
         match solving_method {
             SolvingMethod::SimpleIteration => {
-                (small_delta, big_delta) = self.get_delta(&solving_method);
+                (small_delta, big_delta) = self.get_delta((hx, hy), &solving_method);
                 ksi = small_delta / big_delta;
                 calculated_steps_count = ((1_f64 / eps).ln() / 2_f64 / ksi) as usize + 1;
             }
             SolvingMethod::OptimalSimpleIteration => {
-                (small_delta, big_delta) = self.get_delta(&solving_method);
+                (small_delta, big_delta) = self.get_delta((hx, hy), &solving_method);
                 ksi = small_delta / big_delta;
                 calculated_steps_count = ((1_f64 / eps).ln() / 2_f64 / ksi) as usize + 1;
 
                 tau = 2_f64 / (big_delta + small_delta);
             }
             SolvingMethod::Zeidel => {
-                (small_delta, big_delta) = self.get_delta(&solving_method);
+                (small_delta, big_delta) = self.get_delta((hx, hy), &solving_method);
                 ksi = small_delta / big_delta;
                 calculated_steps_count = ((1_f64 / eps).ln() / 4_f64 / ksi) as usize + 1;
             }
@@ -459,7 +531,7 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
                 tau += self.t;
             }
             SolvingMethod::IterationChebyshevsky => {
-                (small_delta, big_delta) = self.get_delta(&solving_method);
+                (small_delta, big_delta) = self.get_delta((hx, hy), &solving_method);
 
                 cheb_params = get_optimal_chebyshev_params(max_steps);
                 cheb_coeffs =
@@ -467,7 +539,7 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
                 cheb_coeffs_iter = cheb_coeffs.iter().cycle();
             }
             SolvingMethod::AlternatingTriangular => {
-                (small_delta, big_delta) = self.get_delta(&solving_method);
+                (small_delta, big_delta) = self.get_delta((hx, hy), &solving_method);
                 ksi = small_delta / big_delta;
 
                 let h = (hx2 + hy2).sqrt();
@@ -486,7 +558,7 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
                 am = vec![vec![0_f64; m]; n];
             }
             SolvingMethod::AlternatingTriangularChebyshevsky => {
-                (small_delta, big_delta) = self.get_delta(&solving_method);
+                (small_delta, big_delta) = self.get_delta((hx, hy), &solving_method);
                 ksi = small_delta / big_delta;
                 calculated_steps_count =
                     ((2_f64 / eps).ln() / (2_f64 * SQRT_2 * ksi.powf(0.25_f64))) as usize + 1;
@@ -509,7 +581,7 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
                 am = vec![vec![0_f64; m]; n];
             }
             SolvingMethod::AlternatingDirections => {
-                (small_delta, big_delta) = self.get_delta(&solving_method);
+                (small_delta, big_delta) = self.get_delta((hx, hy), &solving_method);
 
                 tau = 2_f64 / (small_delta * big_delta).sqrt();
                 // let h = (hx2 + hy2).sqrt();
@@ -541,7 +613,7 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
                             parallel_raw_run_method_second(tx10, rx10, rxr10);
                         });
                     }
-                    OptimizationType::Multithreading => {
+                    OptimizationType::Multithreading | OptimizationType::Combined => {
                         for _ in 0..threads_count {
                             let (tx, rx) = mpsc::channel::<RawTrisf64Mut>();
                             let txue0 = txme0.clone();
@@ -581,7 +653,7 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
                 tau,
                 cheb_params,
             );
-            uk_prev = self.u.clone();
+            uk_prev = u.clone();
             ph1ph = (1_f64 - ksi) / (1_f64 + ksi);
             ph1ph = ph1ph / (1_f64 - ph1ph);
         }
@@ -624,14 +696,15 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
                                 mp: &[Vec<f64>],
                                 mq: &[Vec<f64>],
                                 ph1ph: f64,
+                                u: &[Vec<f64>],
                                 uk_prev: &[Vec<f64>]| {
             if eq.backtrace_level != BacktraceLevel::None && eq.backtrace.check_current_step() {
                 eq.backtrace.add_data(
                     cur_tau,
-                    eq.get_discrepancy_norm(mf, mp, mq, &eq.u),
-                    eq.get_norm_adj_difference(uk_prev),
+                    eq.get_discrepancy_norm((hx2, hy2), mf, mp, mq, u),
+                    eq.get_norm_adj_difference(u, uk_prev),
                     ph1ph,
-                    eq.u.clone(),
+                    u.to_owned(),
                 );
             };
         };
@@ -640,12 +713,12 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
             match solving_method {
                 SolvingMethod::SimpleIteration | SolvingMethod::OptimalSimpleIteration => {
                     for i in 1..(n - 1) {
-                        uq1v[i - 1] = self.u[i][0];
+                        uq1v[i - 1] = u[i][0];
                     }
                 }
                 SolvingMethod::IterationChebyshevsky => {
                     for i in 1..(n - 1) {
-                        uq1v[i - 1] = self.u[i][0];
+                        uq1v[i - 1] = u[i][0];
                     }
 
                     // Iterator is cycled for this method and len > 0, so we can unwrap it safely.
@@ -661,7 +734,7 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
             match solving_method {
                 SolvingMethod::SimpleIteration => {
                     for j in 1..(m - 1) {
-                        ut = self.u[0][j];
+                        ut = u[0][j];
 
                         for i in 1..(n - 1) {
                             // Setting values
@@ -672,16 +745,16 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
                             p2 = mp[i][j - 1];
                             q2 = mq[i - 1][j];
 
-                            up2 = self.u[i + 1][j];
-                            uq2 = self.u[i][j + 1];
+                            up2 = u[i + 1][j];
+                            uq2 = u[i][j + 1];
 
                             // Shifting
                             up1 = ut;
                             uq1 = uq1v.pop_front().unwrap();
 
                             // Preparing for shift
-                            ut = self.u[i][j];
-                            uq1v.push_back(self.u[i][j]);
+                            ut = u[i][j];
+                            uq1v.push_back(u[i][j]);
 
                             // Calculating
                             cur_u =
@@ -689,14 +762,14 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
                                     / (p1 / hx2 + p2 / hx2 + q1 / hy2 + q2 / hy2);
 
                             // Writing
-                            self.u[i][j] = cur_u;
+                            u[i][j] = cur_u;
                         }
                     }
                 }
                 SolvingMethod::OptimalSimpleIteration | SolvingMethod::IterationChebyshevsky => {
                     // Difference in optimal parameter
                     for j in 1..(m - 1) {
-                        ut = self.u[0][j];
+                        ut = u[0][j];
 
                         for i in 1..(n - 1) {
                             // Setting values
@@ -707,16 +780,16 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
                             p2 = mp[i][j - 1];
                             q2 = mq[i - 1][j];
 
-                            up2 = self.u[i + 1][j];
-                            uq2 = self.u[i][j + 1];
+                            up2 = u[i + 1][j];
+                            uq2 = u[i][j + 1];
 
                             // Shifting
                             up1 = ut;
                             uq1 = uq1v.pop_front().unwrap();
 
                             // Preparing for shift
-                            ut = self.u[i][j];
-                            uq1v.push_back(self.u[i][j]);
+                            ut = u[i][j];
+                            uq1v.push_back(u[i][j]);
 
                             // Calculating
                             cur_u = ut
@@ -727,7 +800,7 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
                                         + fij);
 
                             // Writing
-                            self.u[i][j] = cur_u;
+                            u[i][j] = cur_u;
                         }
                     }
                 }
@@ -742,10 +815,10 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
                             p2 = mp[i][j - 1];
                             q2 = mq[i - 1][j];
 
-                            up1 = self.u[i - 1][j];
-                            uq1 = self.u[i][j - 1];
-                            up2 = self.u[i + 1][j];
-                            uq2 = self.u[i][j + 1];
+                            up1 = u[i - 1][j];
+                            uq1 = u[i][j - 1];
+                            up2 = u[i + 1][j];
+                            uq2 = u[i][j + 1];
 
                             // Calculating
                             cur_u =
@@ -753,7 +826,7 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
                                     / (p1 / hx2 + p2 / hx2 + q1 / hy2 + q2 / hy2);
 
                             // Writing
-                            self.u[i][j] = cur_u;
+                            u[i][j] = cur_u;
                         }
                     }
                 }
@@ -769,15 +842,15 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
                             p2 = mp[i][j - 1];
                             q2 = mq[i - 1][j];
 
-                            up2 = self.u[i + 1][j];
-                            uq2 = self.u[i][j + 1];
+                            up2 = u[i + 1][j];
+                            uq2 = u[i][j + 1];
 
                             // Shifting
-                            up1 = self.u[i - 1][j];
-                            uq1 = self.u[i][j - 1];
+                            up1 = u[i - 1][j];
+                            uq1 = u[i][j - 1];
 
                             // Preparing for shift
-                            ut = self.u[i][j];
+                            ut = u[i][j];
 
                             // Calculating
                             cur_u = ut
@@ -788,7 +861,7 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
                                     / (p1 / hx2 + p2 / hx2 + q1 / hy2 + q2 / hy2);
 
                             // Writing
-                            self.u[i][j] = cur_u;
+                            u[i][j] = cur_u;
                         }
                     }
                 }
@@ -805,15 +878,15 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
                             p2 = mp[i][j - 1];
                             q2 = mq[i - 1][j];
 
-                            up2 = self.u[i + 1][j];
-                            uq2 = self.u[i][j + 1];
+                            up2 = u[i + 1][j];
+                            uq2 = u[i][j + 1];
 
                             // Shifting
-                            up1 = self.u[i - 1][j];
-                            uq1 = self.u[i][j - 1];
+                            up1 = u[i - 1][j];
+                            uq1 = u[i][j - 1];
 
                             // Preparing for shift
-                            ut = self.u[i][j];
+                            ut = u[i][j];
 
                             // Calculating
                             cur_u = p2 * (up2 - ut) / hx2 - p1 * (ut - up1) / hx2
@@ -834,7 +907,7 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
                             // Calculating
                             am[i][j] = (k1 * p2 * am[i + 1][j] + k2 * q2 * am[i][j + 1] + am[i][j])
                                 / (1_f64 + k1 * p2 + k2 * q2);
-                            self.u[i][j] += cur_tau * am[i][j];
+                            u[i][j] += cur_tau * am[i][j];
                         }
                     }
                 }
@@ -842,17 +915,17 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
                     for j in 0..(m - 2) {
                         // Filling vector b
                         for i in 0..(n - 2) {
-                            uq1 = self.u[i + 1][j];
-                            ut = self.u[i + 1][j + 1];
-                            uq2 = self.u[i + 1][j + 2];
+                            uq1 = u[i + 1][j];
+                            ut = u[i + 1][j + 1];
+                            uq2 = u[i + 1][j + 2];
                             avs0[i + 1] = ut
                                 + tau / 2_f64
                                     * (mf[i][j] + mq[i][j + 1] * (uq2 - ut) / hy2
                                         - mq[i][j] * (ut - uq1) / hy2);
                         }
 
-                        avs0[0] = self.u[0][j + 1];
-                        avs0[n - 1] = self.u[n - 1][j + 1];
+                        avs0[0] = u[0][j + 1];
+                        avs0[n - 1] = u[n - 1][j + 1];
 
                         // Filling tridiagonal matrix as 3 vectors
                         a1 = -tau / 2_f64 / hx2;
@@ -875,7 +948,7 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
                                     &tx01, &rx01, &txr01, &mut av0, &mut av01, &mut av02, &mut avs0,
                                 );
                             }
-                            OptimizationType::Multithreading => {
+                            OptimizationType::Multithreading | OptimizationType::Combined => {
                                 multithread_run_method_main(
                                     &txmv0e, &rxm0e, &txmvu0e, &mut av0, &mut av01, &mut av02,
                                     &mut avs0,
@@ -887,7 +960,7 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
                         if j > 0 {
                             // Writing result for previous column
                             for (i, &avt0i) in avt0.iter().enumerate() {
-                                self.u[i + 1][j] = avt0i;
+                                u[i + 1][j] = avt0i;
                             }
                         }
 
@@ -897,24 +970,24 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
                         } else {
                             // Writing result for last column
                             for (i, &avs0i) in avs0.iter().enumerate().take(n - 1).skip(1) {
-                                self.u[i][j + 1] = avs0i;
+                                u[i][j + 1] = avs0i;
                             }
                         }
                     }
 
                     for i in 0..(n - 2) {
                         for j in 0..(m - 2) {
-                            up1 = self.u[i][j + 1];
-                            ut = self.u[i + 1][j + 1];
-                            up2 = self.u[i + 2][j + 1];
+                            up1 = u[i][j + 1];
+                            ut = u[i + 1][j + 1];
+                            up2 = u[i + 2][j + 1];
                             avs1[j + 1] = ut
                                 + tau / 2_f64
                                     * (mf[i][j] + mp[i + 1][j] * (up2 - ut) / hx2
                                         - mp[i][j] * (ut - up1) / hx2);
                         }
 
-                        avs1[0] = self.u[i + 1][0];
-                        avs1[m - 1] = self.u[i + 1][m - 1];
+                        avs1[0] = u[i + 1][0];
+                        avs1[m - 1] = u[i + 1][m - 1];
 
                         a1 = -tau / 2_f64 / hy2;
                         for t in 1..(m - 1) {
@@ -927,7 +1000,7 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
                         av11[m - 1] = 1_f64;
 
                         match optimization {
-                            OptimizationType::Nothing => {
+                            OptimizationType::Nothing | OptimizationType::Combined => {
                                 run_method(&av1, &mut av11, &av12, &mut avs1);
                             }
                             OptimizationType::Parallelism => {
@@ -944,21 +1017,25 @@ impl<T: EllipticEquation> EllipticEquationSolver<T> {
                         }
 
                         if i > 0 {
-                            self.u[i][1..(m - 1)].copy_from_slice(&avt1);
+                            u[i][1..(m - 1)].copy_from_slice(&avt1);
                         }
 
                         if i < n - 3 {
                             avt1.copy_from_slice(&avs1[1..(m - 1)]);
                         } else {
-                            self.u[i + 1][1..(m - 1)].copy_from_slice(&avs1[1..(m - 1)]);
+                            u[i + 1][1..(m - 1)].copy_from_slice(&avs1[1..(m - 1)]);
                         }
                     }
                 }
             }
 
-            backtrace_update(self, cur_tau, &mf, &mp, &mq, ph1ph, &uk_prev);
-            uk_prev = self.u.clone();
+            if self.backtrace_level != BacktraceLevel::None {
+                backtrace_update(self, cur_tau, &mf, &mp, &mq, ph1ph, &u, &uk_prev);
+                uk_prev = u.clone();
+            }
         }
+
+        self.u = u;
     }
 }
 
@@ -1005,7 +1082,7 @@ fn multithread_run_method_main(
         // println!("pointers for {} at {} with part {}", i, u, tn);
         unsafe {
             tx.send(RawTrisf64Mut {
-                id, // 1 is first, 0 is last
+                id,
                 n: tn,
                 l: l.as_mut_ptr().add(u),
                 d: d.as_mut_ptr().add(u),
@@ -1231,7 +1308,7 @@ fn parallel_raw_run_method_second(
             c = *r.add(n2 - 1) * *b;
         }
 
-        tx10.send(n2).unwrap(); // 4
+        tx10.send(0_usize).unwrap(); // 4
 
         unsafe {
             b = b.sub(1);
@@ -1247,7 +1324,7 @@ fn parallel_raw_run_method_second(
             }
         }
 
-        tx10.send(n2).unwrap(); // 5
+        tx10.send(0_usize).unwrap(); // 5
     }
 }
 
